@@ -1,0 +1,81 @@
+# CI baseline for REQ-009 (delivery pipeline).
+#
+# IMPORTANT — secrets configuration required before the backend job can pass:
+#   The pytest suite (tests/) connects to a real PostgreSQL database via
+#   DATABASE_URL (transaction-isolated tests; see HANDOVER/05 and /11).
+#   Configure these GitHub Actions repository secrets before expecting green CI:
+#     - DATABASE_URL  : connection string for a NON-PRODUCTION test/staging
+#                       database. Do NOT point CI at the live production DB.
+#                       Staging DB decision belongs to solution-architect
+#                       (REQ-009 note in the requirement register).
+#   SUPABASE_URL / SUPABASE_JWT_SECRET are set to synthetic test-only values by
+#   tests/conftest.py; no real Supabase secret is needed for the current suite.
+#   No secret values are defined or invented in this workflow.
+#
+# Local dev uses Python 3.14 (.venv); CI uses 3.12 (minimum supported per
+# REQ-009 task). Dependency versions are pinned in requirements.txt to the
+# versions verified installed in .venv on 2026-11-19.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Check required secrets are configured
+        # Fail fast with an honest message instead of a confusing DB error.
+        # Until DATABASE_URL is set as a repository secret, this job CANNOT pass.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Repository secret DATABASE_URL is not configured." \
+                 "DB-dependent tests cannot run. Configure a non-production" \
+                 "test database secret before CI can go green (REQ-009)."
+            exit 1
+          fi
+
+      - name: Run pytest
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # Full suite hits the database (~7 min locally against live DB).
+        run: python -m pytest -q tests/
+
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

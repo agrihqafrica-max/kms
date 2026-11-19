@@ -43,3 +43,11 @@ npm --prefix frontend run build
 ## External services
 - Supabase PostgreSQL and Auth.
 - No verified M-Pesa, WhatsApp, OCR, AI, KRA/eTIMS, or QR integrations are present.
+
+## Delivery pipeline baseline (REQ-009, devops-integration-engineer, 2026-11-19)
+- Git repository initialised (branch `main`, local only; no remote, no push). Comprehensive `.gitignore` verified with `git check-ignore` (`.env.local`, `.venv`, `node_modules`, caches, strays excluded); no secret staged or committed.
+- CI workflow added: `.github/workflows/ci.yml` (backend pytest + frontend lint/build). Backend job BLOCKED until repository secret `DATABASE_URL` is configured against a non-production test DB; workflow has not yet run on a hosted runner.
+- `requirements.txt` pinned to versions verified installed in `.venv` via `pip show` (fastapi 0.164.0, uvicorn 0.54.0, sqlalchemy 2.1.9, asyncpg 0.32.0, pydantic 2.14.3, python-dotenv 1.2.4, pyjwt 2.15.1, cryptography 50.0.2, httpx 0.28.1, pytest 9.2.0). pytest-asyncio not required (synchronous tests using asyncio.run).
+- Ops runbook skeleton: `docs/ops/RUNBOOK.md` (environments, secret names, D-025 backup/restore outline, D-026 monitoring thresholds, incident outline; unbuilt capabilities marked TODO).
+- Local evidence 2026-11-19: `npm run build` PASS (4.30s), `npm run lint` PASS (0 warnings/0 errors), `pytest --collect-only -q tests/` → 44 tests collected (collection only; full suite not re-run).
+- Stray files left on disk, untracked, pending frontend-engineer review: `frontend/src/App.jsx.tmp` (0 bytes), `frontend/src/index.css.new`, `inspect_schema.tmp` (0 bytes).
