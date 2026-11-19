@@ -1,0 +1,67 @@
+# --- Environment & Secret Keys (NEVER commit; .env.local holds live credentials) ---
+.env
+.env.*
+.env*
+!.env.example
+frontend/.env*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- Python / FastAPI Backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+
+# --- Scratch / one-off scripts (local investigation artifacts) ---
+scratch_*.py
+
+# --- Stray editor temporaries (kept on disk, deliberately untracked) ---
+*.tmp
+frontend/src/*.new
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- React / Frontend / Node ---
+node_modules/
+dist-ssr/
+.next/
+out/
+frontend/dist/
+
+# --- Supabase CLI local state (defensive; none present today) ---
+.supabase/
+supabase/.temp/
+supabase/.branches/
+
+# --- Qoder: track agent definitions, ignore any local/session state ---
+.qoder/*
+!.qoder/agents/
+
+# --- IDEs, Editors & OS Files ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

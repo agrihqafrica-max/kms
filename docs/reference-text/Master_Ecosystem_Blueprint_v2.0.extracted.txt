@@ -1,0 +1,870 @@
+--- PAGE 1 ---
+Master Ecosystem Blueprint v2.0
+Page 1
+ MASTER ECOSYSTEM BLUEPRINT
+ VERSION 2.0
+ Kenya Motorcycle Spare Parts & Supply Chain Ecosystem
+Standalone Product, Architecture, and Operating Specification
+Document type: Master Implementation Blueprint
+Audience: Product, engineering, AI agents, operations, and commercial teams
+Version: 2.0 | Date: 19 November 2026
+Status: Authoritative system specification
+
+--- PAGE 2 ---
+Master Ecosystem Blueprint v2.0
+Page 2
+1. Purpose and Scope
+This document is the single authoritative blueprint for the Kenya Motorcycle Spare Parts & Supply Chain Ecosystem. It defines
+the product, users, business processes, information architecture, security model, AI capabilities, integrations, notifications,
+reporting, and operational standards required to build a production-grade platform.
+The ecosystem connects motorcycle spare-parts manufacturers, exporters, importers, wholesalers, retailers, mechanics,
+riders, and end customers in one trusted digital environment. Its purpose is to make parts easier to find, stock easier to
+manage, trade easier to complete, money easier to control, and supply-chain decisions easier to make.
+This blueprint is self-contained. It does not depend on interpretation of another document. Where earlier concepts are retained,
+they are restated here as definitive requirements. The implementation roadmap is provided in a separate companion
+document, but this blueprint remains the source of product and architectural truth.
+1.1 Product definition
+The platform is a multi-tenant, offline-capable, AI-assisted commerce and supply-chain operating system for the motorcycle
+spare-parts market. It provides each business with private tools for selling, stock control, procurement, fulfilment, finance,
+compliance, and customer communication, while enabling controlled discovery and trade across the wider network.
+1.2 In scope
+  Multi-tenant business accounts, staff roles, branches, warehouses, and device management.
+ Product catalogue, motorcycle fitment data, OEM/aftermarket cross-references, images, and part identification.
+ Offline-capable POS, quotations, sales orders, invoices, receipts, returns, credit notes, and customer credit.
+ Inventory control, stock movements, transfers, counts, adjustments, reservations, batches, and stock valuation.
+ Procurement, supplier management, purchase orders, goods receipt, landed cost, supplier returns, and reorder
+intelligence.
+ Wholesale operations, customer credit, dispatch, rider delivery, proof of delivery, and buyer-retention intelligence.
+ Parts Radar reverse-search, verified supplier quotes, reservations, fulfilment, and compatibility assistance.
+ Financial ledger, expenses, cash reconciliation, payroll preparation, commissions, payouts, taxes, and reporting.
+ Configurable tax compliance, eTIMS integration, VAT calculation, electronic invoices, and compliance monitoring.
+ WhatsApp Business messaging, in-app chat, notifications, alerts, reminders, and customer communication.
+ AI agents for margin protection, inventory intelligence, part matching, communication drafting, fraud detection, and
+customer success.
+ Network marketplace services: verified profiles, blind-stock visibility, referrals, disputes, reputation, and settlement.
+ Administration, analytics, reporting, integrations, support, security, and platform governance.
+1.3 Out of scope at launch
+  Full ERP manufacturing, production planning, and factory resource planning.
+ Banking, lending, insurance underwriting, or credit provision by the platform itself.
+ Autonomous execution of bank payments without explicit owner authorisation and a compliant payment provider.
+ Public social-media features unrelated to commerce, fulfilment, or support.
+ Unrestricted open marketplace listings without verification, moderation, and dispute controls.
+
+--- PAGE 3 ---
+Master Ecosystem Blueprint v2.0
+Page 3
+2. Product Vision and Principles
+The platform must feel simple to a shop attendant, powerful to an owner, reliable to a warehouse team, and indispensable to a
+mechanic. It must continue operating when connectivity fails, protect commercial privacy, and make every shilling, unit, and
+decision traceable.
+2.1 Design philosophy
+The platform follows the principle of “Ferrari engine, bicycle handlebars.” The user-facing experience must be radically
+simple, fast, and chronological. The underlying engine must be deeply capable: multi-tenant, offline-resilient, event-driven,
+financially rigorous, and AI-assisted.
+2.2 Non-negotiable principles
+  Trade continues offline. A user must be able to sell, check local stock, issue a receipt, record an expense, and queue a
+part request without internet connectivity.
+ One tenant, one secure boundary. Financial records, supplier costs, margins, customer lists, bank details, and internal
+stock quantities are private to each organisation.
+ The ledger is the source of truth. Every commercial and inventory event produces a balanced, immutable financial and
+operational record.
+ Speed is a product requirement. Core counter and warehouse actions must be achievable in seconds, with minimal
+typing and large touch targets.
+ AI assists; authorised humans decide. AI may detect, draft, rank, and prepare actions. Irreversible commercial, financial,
+or external communication actions require explicit approval unless a narrowly scoped automation policy is enabled.
+ Privacy enables participation. Businesses will share network-level information only when it creates value without
+exposing competitively sensitive data.
+ Compliance is configurable, not optional in governance. A business may operate in simplified commercial mode, but
+the platform preserves a complete internal audit trail and can activate formal compliance without data loss.
+ Every action is accountable. Sales, discounts, refunds, stock adjustments, approvals, exports, messages, and AI
+decisions must be attributable to a user, device, role, and timestamp.
+2.3 Success definition
+The ecosystem succeeds when a retailer can complete a sale faster than a manual process, an owner can trust the profit
+number, a wholesaler can fulfil orders reliably, a mechanic can find the correct part quickly, and a supplier can understand real
+demand without accessing competitors’ private data.
+
+--- PAGE 4 ---
+Master Ecosystem Blueprint v2.0
+Page 4
+3. Users, Profiles, and Roles
+Every participant has a profile, permissions, and a defined commercial role. A single organisation may operate in more than
+one role; for example, an importer may also be a wholesaler, and a retailer may serve mechanics directly.
+3.1 Actor architecture
+Actor
+Core needs
+Platform capabilities
+Manufacturer /
+exporter
+Understand demand, manage
+catalogue, support distributors
+Anonymous demand trends, SKU velocity, quality feedback, catalogue publishing,
+warranty policy, recall notices, authorised-distributor management
+Importer
+Track shipments, receive stock,
+calculate landed cost
+Container tracking, customs documents, clearance status, godown receipt,
+landed-cost allocation, demurrage alerts, batch/serial traceability
+Wholesaler /
+distributor
+Manage stock, credit, dispatch,
+and buyer relationships
+Multi-branch inventory, bulk breaking, price lists, customer credit, dispatch, rider
+delivery, buyer churn radar, returns and RMA
+Retailer
+Sell quickly, control cash, source
+missing parts
+Offline POS, barcode scanning, local stock, expenses, sourcing requests, customer
+credit, daily profit, supplier returns
+Mechanic / garage
+Find parts, manage jobs, earn
+referrals
+Verified garage profile, vehicle registry, job cards, photo/voice part requests, quotes,
+referral wallet, service reminders
+Rider / delivery agent
+Receive jobs, deliver, confirm
+collection
+Assigned deliveries, route view, proof of delivery, COD collection, incident reporting,
+earnings and settlement
+End rider / customer
+Find parts, buy, track orders
+Vehicle profile, part search, orders, payments, receipts, delivery tracking, warranty
+claims, support
+Platform operator
+Onboard, moderate, support, and
+govern the ecosystem
+Tenant administration, verification, moderation, fraud review, dispute resolution,
+integration monitoring, revenue reporting
+3.2 Profile types
+Profiles are progressive. A user may begin with a basic commercial profile and later complete verification required for credit,
+marketplace selling, referrals, or formal tax compliance.
+Profile level
+Required information
+Unlocked capabilities
+Basic
+Name, phone number, email, password,
+preferred language
+Browse, receive notifications, contact support
+Business
+Business name, category, location, branch
+details, contacts
+POS, inventory, sales, expenses, basic reporting
+Verified business
+Registration documents, owner identity,
+address, tax PIN where applicable
+Marketplace selling, higher transaction limits, supplier onboarding,
+credit features
+Verified mechanic
+Garage details, skills, service area, identity,
+portfolio
+Job cards, part requests, referral earnings, customer history
+Verified rider
+Identity, vehicle details, service area, licence
+where applicable
+Delivery jobs, COD handling, earnings, performance score
+Manufacturer / importer
+Company registration, brand authorisation,
+catalogue access, tax details
+Catalogue publishing, demand analytics, distributor management,
+shipment tracking
+3.3 Internal roles and permissions
+Permissions must be role-based and attribute-based. A role defines what a user may do; attributes such as branch, approval
+limit, cost visibility, customer ownership, and time window define where and under what conditions the user may do it.
+Role
+Can do
+Cannot do without approval
+Owner / director
+Full financial visibility, approvals, settings,
+payouts, user management
+Delegate approval authority without audit record
+Branch manager
+Branch operations, discounts within limit,
+approvals, staff oversight
+Change global pricing, access another branch’s private data
+Cashier
+Create sale, accept payment, issue receipt,
+record permitted expense
+View buying cost, margin, bank details, approve refunds above limit
+Storekeeper
+Receive, issue, transfer, count, and adjust stock
+Approve high-value adjustments or delete stock records
+Procurement officer
+Create PO, receive goods, manage suppliers
+Approve PO above threshold or change approved cost without audit
+
+--- PAGE 5 ---
+Master Ecosystem Blueprint v2.0
+Page 5
+Role
+Can do
+Cannot do without approval
+Accountant / finance
+View ledger, reconcile payments, prepare reports
+Approve own expense claims or alter posted journal entries
+Sales agent
+Manage assigned customers, quotes, orders,
+follow-ups
+Access customers outside assignment or change credit limits
+Mechanic
+Create job card, request part, view own referrals
+Access shop financials or other mechanics’ customer data
+Rider
+View assigned delivery, update status, upload
+proof
+Change order value, access customer financial data, self-assign
+deliveries
+
+--- PAGE 6 ---
+Master Ecosystem Blueprint v2.0
+Page 6
+4. Functional Capability Catalogue
+The platform is organised into modular capability domains. Each domain owns its data, rules, workflows, notifications, reports,
+and integration responsibilities.
+4.1 Identity, profiles, and access
+  Phone-number registration, OTP verification, passwordless login options, session management, and device trust.
+ Business profile with name, category, location, contacts, operating hours, service areas, logo, photos, and verification
+status.
+ Staff accounts with role assignment, branch assignment, approval limits, cost visibility, and activation/deactivation.
+ Device management: enrolment, device name, last sync, offline capability, remote revocation, and lost-device wipe.
+ Customer, supplier, mechanic, rider, and partner profiles with relationship history and consent records.
+ Permission matrix covering modules, branches, data sensitivity, approval thresholds, and export rights.
+4.2 Catalogue and fitment
+  Part master with canonical ID, name, description, category, brand, barcode/EAN, packaging, dimensions, weight, images,
+and documents.
+ SKU and variant management, including size, colour, quality grade, pack configuration, and unit of measure.
+ Bike-model registry covering make, model, variant, engine type, year range, and regional naming variations.
+ Fitment records linking parts to bike models, with OEM reference, position, side, compatibility confidence, and verification
+status.
+ OEM and aftermarket cross-reference mapping, including source, confidence, conflict resolution, and version history.
+ Photo and voice intake for part identification, with AI-proposed candidates and mandatory human confirmation for uncertain
+matches.
+ Catalogue governance: supplier submission, duplicate detection, data-quality score, approval, publication, takedown, and
+change history.
+4.3 Inventory and warehouse
+  Multi-location inventory across shops, warehouses, godowns, vehicles, and in-transit locations.
+ Stock movements for receipt, sale, transfer, adjustment, return, damage, assembly, and count variance.
+ Stock reservations with expiry, priority, source order, and release rules.
+ Batch, lot, serial, expiry, and warranty traceability where applicable.
+ Stock counts with scheduled counts, blind counts, variance approval, and adjustment reasons.
+ Stock-transfer workflow with dispatch, in-transit status, receipt confirmation, shortage detection, and discrepancy
+resolution.
+ Barcode generation, label printing, shelf/bin location, pack breaking, and unit conversion.
+ Inventory valuation using weighted-average cost by default, with optional FIFO where required.
+4.4 Sales and customer commerce
+  Fast POS with barcode-first search, quick-add items, customer selection, discount rules, payment capture, and receipt
+issuance.
+ Quotations, proforma invoices, sales orders, back-orders, partial fulfilment, delivery notes, invoices, and receipts.
+ Walk-in, mechanic, rider, corporate, and online customer types with separate pricing and credit rules.
+ Discount management with percentage, amount, bundle, promotional, and manager-approval thresholds.
+ Returns, exchanges, damaged goods, warranty claims, credit notes, and refund workflows.
+ Customer credit with limits, outstanding balance, ageing, payment plans, reminders, and collection follow-up.
+ Deposits, instalments, layaway, loyalty points, referral rewards, and promotional campaigns.
+
+--- PAGE 7 ---
+Master Ecosystem Blueprint v2.0
+Page 7
+ Digital receipts by WhatsApp, SMS, email, PDF, or printed thermal receipt.
+
+--- PAGE 8 ---
+Master Ecosystem Blueprint v2.0
+Page 8
+4.5 Procurement and supply chain
+  Supplier profiles with terms, payment terms, lead time, reliability score, contacts, and catalogues.
+ Purchase requisitions, supplier quotations, purchase-order creation, approval, dispatch, and receipt.
+ Goods received notes with quantity, quality, batch, serial, expiry, damage, and discrepancy capture.
+ Landed-cost calculation covering freight, insurance, customs, clearing, handling, transport, and allocation across items.
+ Container and shipment tracking from port clearance to godown receipt.
+ Purchase-return, supplier-credit, warranty-claim, and quality-complaint workflows.
+ Reorder recommendations with recommended quantity, supplier, expected arrival, cash impact, and approval status.
+ Supplier performance reporting for price, fill rate, lead time, defect rate, and responsiveness.
+4.6 Fulfilment and logistics
+  Delivery orders with pickup, dispatch, rider assignment, route view, status updates, and proof of delivery.
+ Pickup, matatu-shuttle, courier, and self-collection fulfilment options.
+ COD collection, partial delivery, failed delivery, return-to-sender, and incident reporting.
+ Delivery-zone configuration, delivery-fee rules, cut-off times, and service-level expectations.
+ Rider performance metrics: on-time rate, completion rate, customer rating, COD variance, and incident history.
+ Customer delivery notifications and tracking links.
+4.7 Parts Radar and network commerce
+  Reverse-search request creation with bike model, part description, photo, voice note, urgency, location area, and budget.
+ AI-assisted interpretation, candidate matching, compatibility ranking, and clarification questions.
+ Broadcast to eligible verified stockists based on category, location, service area, and permission.
+ Supplier quote submission with price, pack size, availability, condition, warranty, and delivery promise.
+ Quote comparison, reservation, order conversion, dispatch, delivery, and confirmation.
+ Blind-stock visibility rules that hide exact quantities, buying costs, and customer lists.
+ Reputation, dispute, cancellation, no-show, and quality-feedback management.
+4.8 Finance and profitability
+  Double-entry ledger with chart of accounts, journal entries, trial balance, and period closing.
+ Sales revenue, COGS, gross profit, operating expenses, net profit, cash flow, and receivables reporting.
+ Expense capture with category, branch, approver, receipt image, payment method, and recurring rules.
+ Cash-drawer control: opening float, sales, expenses, payouts, change, closing count, and variance investigation.
+ Customer receivables, supplier payables, credit notes, refunds, deposits, and prepayments.
+ Staff payroll preparation, advances, deductions, commissions, and payout approval.
+ Mechanic referral commissions, rider delivery earnings, sales-agent incentives, and supplier rebates.
+ Tax calculation, tax-invoice generation, eTIMS submission, and compliance reporting.
+
+--- PAGE 9 ---
+Master Ecosystem Blueprint v2.0
+Page 9
+4.9 Compliance and governance
+  Tenant-level compliance profile with tax registration, VAT status, eTIMS connection, payroll settings, and document
+storage.
+ Configurable compliance switches that activate invoice fields, tax calculation, eTIMS submission, and statutory reporting.
+ eTIMS submission lifecycle: created, queued, submitted, accepted, rejected, retried, cancelled, and manually resolved.
+ Invoice numbering, credit-note numbering, receipt templates, and document-version control.
+ Consent management for WhatsApp, SMS, email, marketing, location sharing, and data processing.
+ Retention schedules, data-export requests, deletion requests, and breach-response workflow.
+ Platform policy engine for prohibited goods, pricing abuse, fake stock, fraudulent referrals, and account suspension.
+4.10 Notifications and communication
+Notifications must be contextual, permission-aware, and rate-limited. Every notification must have a purpose, audience,
+channel, trigger, priority, and opt-out rule.
+Notification
+Trigger
+Audience
+Channel
+Low-stock alert
+Stock reaches reorder point
+Owner, storekeeper,
+procurement
+In-app, WhatsApp, email
+Reorder draft ready
+Reorder rule triggered
+Owner, procurement
+In-app, WhatsApp
+PO approved
+Owner approves purchase order
+Supplier, procurement,
+warehouse
+In-app, WhatsApp, email
+Shipment arriving
+Container nears arrival or clears
+Wholesaler subscribers
+In-app, WhatsApp, SMS
+Sale completed
+Sale is completed
+Customer, cashier, owner
+Receipt, WhatsApp, in-app
+Payment received
+Payment confirmed
+Owner, cashier, customer
+In-app, WhatsApp, SMS
+Credit due
+Payment due date approaches
+Customer, owner, sales agent
+In-app, WhatsApp, SMS
+Part request matched
+Compatible stock or quote found
+Requesting mechanic/retailer
+In-app, WhatsApp
+Quote received
+Supplier submits quote
+Buyer
+In-app, WhatsApp
+Reservation expiring
+Reservation nears expiry
+Buyer and seller
+In-app, WhatsApp
+Delivery assigned
+Order assigned to rider
+Rider, dispatcher
+In-app, WhatsApp, SMS
+Delivery completed
+Proof of delivery uploaded
+Customer, seller, dispatcher
+In-app, WhatsApp
+Cash variance detected
+Cash count differs from expected
+Owner, branch manager
+In-app, WhatsApp
+Margin anomaly
+SKU sold below threshold
+Owner, finance
+In-app, WhatsApp
+Daily business briefing
+Scheduled daily time
+Owner
+WhatsApp, email, in-app
+Weekly performance report
+Scheduled weekly time
+Owner, managers
+WhatsApp, email, PDF
+Compliance exception
+eTIMS submission fails
+Owner, accountant
+In-app, WhatsApp, email
+Account security alert
+New device, failed login,
+permission change
+User, owner
+In-app, SMS, email
+4.11 Reporting and analytics
+Reports must be role-appropriate, exportable, filterable, and explainable. Operational reports support daily action; analytical
+reports support strategic decisions.
+Report
+Primary audience
+Core measures
+Daily business summary
+Owner
+Sales, gross profit, expenses, net profit, cash position, top items, low stock
+Sales performance
+Owner, manager
+Revenue, quantity, margin, discounts, returns, staff performance, payment mix
+Stock health
+Owner, storekeeper
+Stock value, ageing, dead stock, stock-out rate, turnover, shrinkage, reorder
+needs
+Purchase performance
+Procurement
+PO status, supplier fill rate, lead time, price variance, landed cost, returns
+Customer profitability
+Owner, sales agent
+Revenue, margin, credit exposure, payment behaviour, repeat rate, churn risk
+Parts Radar performance
+Platform, sellers
+Requests, match rate, quote rate, conversion, fulfilment time, wrong-part rate
+
+--- PAGE 10 ---
+Master Ecosystem Blueprint v2.0
+Page 10
+Report
+Primary audience
+Core measures
+Delivery performance
+Operations
+On-time rate, delivery time, failed deliveries, COD variance, rider performance
+Financial statements
+Owner, accountant
+Profit and loss, balance sheet, cash flow, receivables, payables, tax summary
+Compliance dashboard
+Owner, accountant
+Invoice status, eTIMS submissions, VAT summary, exceptions, pending
+documents
+AI performance
+Owner, platform admin
+Recommendations, approval rate, override rate, accuracy, cost, incidents
+
+--- PAGE 11 ---
+Master Ecosystem Blueprint v2.0
+Page 11
+5. Information Architecture
+The platform must use one canonical information model. Existing modules must align to these definitions rather than maintain
+parallel versions of the same business object.
+5.1 Core entities
+Domain
+Entities
+Key rules
+Tenancy
+Tenant, Branch, Location, User, Role,
+Permission, Device, Session, API Key
+Every record is tenant-scoped; permissions combine role, branch, and
+data-sensitivity rules
+Party
+Customer, Supplier, Manufacturer, Mechanic,
+Rider, Partner, Contact, Address
+Parties may have multiple roles and consent records
+Catalogue
+Part, SKU, Variant, Brand, Bike Model,
+Fitment, Cross-Reference, UoM, Image
+A part may have many SKUs and fitments; compatibility requires source
+and confidence
+Inventory
+Location, Stock Lot, Stock Movement,
+Reservation, Transfer, Count, Adjustment
+Stock changes only through signed movements; reservations expire
+Procurement
+Supplier, Requisition, Quote, Purchase
+Order, GRN, Landed Cost, Return
+Approval, partial receipt, and landed-cost allocation are required
+Sales
+Customer, Quote, Order, Sale, Return, Credit
+Note, Discount, Receipt
+Discounts above policy require approval; returns reverse stock and ledger
+Fulfilment
+Delivery, Rider, Route, Waybill, Pickup, Proof
+of Delivery
+COD, delivery confirmation, and exceptions must be tracked
+Finance
+Account, Journal Entry, Payment, Expense,
+Payroll, Commission, Tax, Payout
+Every financial event is balanced; posted entries are corrected by reversal
+Network
+Listing, Visibility Rule, Request, Quote,
+Reservation, Match, Referral
+Network exposure follows minimum-necessary-information rules
+Compliance
+Tax Profile, eTIMS Submission, Invoice
+Signature, Consent, Audit Event
+Compliance state must be auditable and recoverable
+AI
+Agent, Policy, Decision, Approval, Feedback,
+Model Version
+Agent actions are governed, logged, and reversible where possible
+5.2 Event model
+The platform should use an event-driven core. A business action creates a domain event, which updates projections, triggers
+workflows, generates notifications, and produces ledger entries where financially relevant.
+  SaleCompleted: updates revenue, stock, customer balance, cash/payment, tax, and reporting projections.
+ StockReceived: updates stock, cost layers, supplier payable, and procurement status.
+ StockTransferred: updates source and destination locations, in-transit stock, and audit trail.
+ ExpenseRecorded: updates expense accounts, cash position, and profitability reporting.
+ PaymentReceived: updates receivables, cash/bank, customer balance, and reconciliation status.
+ PartRequestCreated: triggers matching, notification, and quote-collection workflow.
+ QuoteAccepted: creates reservation, order, and fulfilment workflow.
+ DeliveryCompleted: updates order status, rider earnings, COD, and customer notification.
+ PayoutApproved: creates payable/settlement entries and unlocks execution through an approved provider.
+ ComplianceSubmitted: records eTIMS status, invoice signature, and exception handling.
+5.3 Identifier and synchronisation rules
+  Every offline-created record receives a client-generated UUID, device ID, timestamp, sequence number, and idempotency
+key.
+ Server-side sequence and version checks prevent silent overwrites.
+ Duplicate submissions are recognised by idempotency key and return the original result rather than creating duplicates.
+ Financial records use append-only journal entries; corrections use reversing entries.
+
+--- PAGE 12 ---
+Master Ecosystem Blueprint v2.0
+Page 12
+ Stock changes use movement records, never direct quantity overwrites.
+ Catalogue and fitment records use versioning, source attribution, and approval history.
+
+--- PAGE 13 ---
+Master Ecosystem Blueprint v2.0
+Page 13
+6. Offline-First Architecture
+Offline operation is a core commercial requirement, not a caching feature. The local device must be able to complete the full
+transaction workflow and synchronise safely when connectivity returns.
+6.1 Offline capability
+  Cashier: complete sale, apply permitted discount, accept cash or mobile-money reference, issue receipt, record expense,
+and check local stock.
+ Storekeeper: receive goods, issue stock, transfer between local locations, record damage, and perform count.
+ Mechanic: search cached catalogue and fitment data, create photo/voice part request, and queue it for broadcast.
+ Owner: view cached sales, stock, expenses, and pending approvals; cloud-only analytics are clearly marked unavailable.
+ Rider: view assigned deliveries, update status, capture proof of delivery, and queue updates.
+6.2 Synchronisation model
+  Use an outbox pattern: operations are written locally before UI confirmation, then synchronised with retries and dead-letter
+handling.
+ Use client-generated UUIDs and idempotency keys to prevent duplicate sale, payment, stock, or request creation.
+ Use event ordering by device sequence and server receipt time.
+ Use stock reservations at the point of sale to reduce overselling during offline periods.
+ Use server-side conflict detection and a reconciliation queue for material conflicts.
+ Use Background Sync where available, but never rely on it as the only retry mechanism.
+6.3 Conflict policy
+Scenario
+Policy
+User experience
+Two offline sales for the last
+unit
+Reserve stock locally; reconcile reservations
+in event order
+Create back-order or sourcing request; alert branch manager;
+never silently corrupt stock
+Central price change while
+offline
+Apply the price version valid at transaction
+time
+Receipt shows price charged; owner sees price-version audit
+Same customer edited on two
+devices
+Last-writer-wins for non-financial fields;
+field-level versioning where needed
+Material conflicts appear in reconciliation queue
+Stock count during live sales
+Count creates variance proposal, not
+immediate overwrite
+Manager approves variance with reason; ledger records
+adjustment
+Duplicate offline submission
+Idempotency key prevents duplicate creation
+User sees “already synchronised” rather than duplicate
+transaction
+eTIMS unavailable
+Queue invoice for submission; issue locally
+valid commercial receipt subject to
+compliance policy
+Compliance dashboard shows pending, submitted, accepted,
+and failed invoices
+
+--- PAGE 14 ---
+Master Ecosystem Blueprint v2.0
+Page 14
+7. Security, Privacy, and Tenancy
+Security must protect against external intrusion, insider misuse, cross-tenant leakage, and unsafe AI access. The platform
+must assume that no request, device, user, or agent is trusted by default.
+7.1 Security controls
+  Enforce tenant isolation at database, API, cache, search-index, file-storage, analytics, and AI-context layers.
+ Use role-based access control plus attribute-based rules for branch, cost visibility, approval limit, customer ownership, and
+time window.
+ Separate duties: the person recording a sale should not automatically approve its refund, stock adjustment, or payout.
+ Maintain immutable audit logs for authentication, permission changes, price overrides, discounts, refunds, stock
+adjustments, ledger corrections, exports, and agent actions.
+ Encrypt data in transit and at rest; isolate secrets; rotate keys; enforce device enrolment and remote revocation.
+ Apply rate limiting, anomaly detection, login protection, session expiry, and secure password recovery.
+ Maintain tested backup, restore, disaster-recovery, and business-continuity procedures.
+7.2 Blind-stock visibility
+Data class
+Network visibility
+Internal visibility
+Exact stock quantity
+Hidden
+Branch/warehouse roles with permission
+Buying cost and margin
+Hidden
+Owner, finance, authorised manager
+Customer contact details
+Hidden until consent or transaction
+Assigned sales/credit roles
+Supplier pricing
+Hidden
+Procurement and authorised management
+Delivery location
+Approximate area until order acceptance
+Fulfilment roles after confirmation
+Aggregated demand trends
+Anonymous and cohort-based
+Manufacturer/exporter tier only
+Internal staff performance
+Hidden
+Owner and authorised managers
+7.3 Privacy and consent
+  Collect only data necessary for the stated commercial purpose.
+ Obtain explicit consent for marketing, location sharing, WhatsApp messaging, and data processing.
+ Provide opt-out, data-export, correction, and deletion-request workflows.
+ Minimise personal data in logs, analytics, AI prompts, and third-party integrations.
+ Restrict location precision until a transaction requires fulfilment.
+ Maintain retention schedules for transactional, financial, compliance, and support data.
+
+--- PAGE 15 ---
+Master Ecosystem Blueprint v2.0
+Page 15
+8. AI Agent Framework
+AI is a workforce layer, not an uncontrolled automation layer. Each agent must have a defined purpose, permitted data,
+permitted actions, approval requirements, and measurable performance.
+8.1 Agent control plane
+  Agent registry with identity, owner, purpose, permitted domains, permitted actions, rate limits, and model/version.
+ Policy engine defining what an agent may do automatically, what it must propose, and what is forbidden.
+ Approval queue for purchase orders, discounts, credit-limit changes, payouts, customer-data exports, and public
+messages.
+ Immutable audit trail capturing input summary, data sources, model/version, confidence, recommendation, approver, and
+outcome.
+ Guardrails preventing cross-tenant access, unapproved messaging, posted-ledger mutation, or direct bank debit.
+ Kill switch allowing owners and platform administrators to suspend an agent, revoke scopes, or roll back non-financial
+automated actions.
+8.2 Agent portfolio
+Agent
+Autonomous scope
+Approval required
+Safeguards
+Financial & Margin
+Guardian
+Detect margin erosion, cash
+variance, expense anomalies, profit
+milestones
+Payout execution, credit
+write-off, policy change
+Ledger reconciliation, approval trail, no
+direct bank debit
+Inventory & Reorder
+Intelligence
+Draft reorder proposals, classify
+stock, detect churn and dead stock
+PO submission, stock write-off,
+price change
+Cash-limit policy, supplier validation,
+duplicate prevention
+Parts Radar / Compatibility
+Interpret request, rank matches,
+draft response
+Send quote, reserve part,
+confirm fitment
+Fitment confidence, image checks, seller
+verification
+WhatsApp Co-Pilot
+Read inbound intent, draft replies,
+schedule reminders
+Send message, publish offer,
+change customer record
+Template compliance, opt-out handling, no
+unsolicited bulk messaging
+Fraud & Risk Sentinel
+Flag unusual discounts, refunds,
+stock adjustments, account
+behaviour
+Account suspension, refund
+approval
+Evidence bundle, appeal workflow, human
+review
+Customer Success Agent
+Detect churn, propose outreach,
+prepare follow-ups
+Send campaign or personalised
+message
+Consent, frequency caps, opt-out
+enforcement
+
+--- PAGE 16 ---
+Master Ecosystem Blueprint v2.0
+Page 16
+9. Integrations
+External integrations must be resilient, auditable, and operationally monitored. Each integration must define authentication,
+data mapping, failure handling, retry policy, and reconciliation rules.
+Integration
+Purpose
+Operational requirements
+KRA eTIMS VSCU
+Electronic tax invoice submission
+and compliance
+Sandbox testing, certification, queueing, retry, failure reason, invoice status,
+reconciliation
+WhatsApp Business Cloud
+API
+Customer and supplier
+communication
+Template management, consent, webhook handling, delivery status, opt-out,
+rate limits, cost monitoring
+M-Pesa / mobile money
+Payment collection and
+reconciliation
+Provider integration, transaction ID matching, webhook verification, refund
+workflow, settlement reconciliation
+Card / online payment
+Digital payment acceptance
+Licensed payment provider, tokenisation, dispute handling, reconciliation
+SMS / email
+Backup notification and customer
+communication
+Consent, templates, delivery status, opt-out, cost control
+Logistics / courier
+Delivery orchestration
+Tracking, proof of delivery, exceptions, settlement
+Accounting export
+External bookkeeping and audit
+Chart-of-accounts mapping, export format, reconciliation, access control
+Manufacturer / supplier API
+Catalogue, stock, price, and
+shipment data
+Authentication, data validation, versioning, error handling
+10. Experience Standards
+The interface must be organised around jobs, not database tables. A cashier should not navigate an ERP; an owner should not
+need an analyst to understand yesterday’s performance.
+10.1 Role workspaces
+Role
+Primary screen
+Essential actions
+Cashier
+Sell / Counter
+Scan or search part, check stock, add customer, apply discount, take payment, issue
+receipt
+Shop owner
+Today / Money
+Sales, gross profit, expenses, cash position, low stock, approvals, staff performance
+Warehouse clerk
+Receive / Pick / Count
+GRN, picking, packing, transfer, stock count, damage recording
+Wholesale sales agent
+Buyers / Orders
+Customer ledger, order pipeline, credit status, delivery scheduling, churn alerts
+Mechanic
+Find Part / My Garage
+Vehicle select, photo/voice request, quotes, job history, referral wallet
+Rider
+Deliveries
+Assigned deliveries, route, proof of delivery, COD collection, incident reporting
+Importer
+Containers / Landed Cost
+Shipment tracking, clearance, receipt, allocation, landed-cost calculation
+Platform admin
+Ecosystem Health
+Tenant onboarding, moderation, fraud, integrations, support SLAs
+10.2 Floating utility dock
+  Business calculator: margin, break-even, bulk-pack conversion, change, instalment estimate, and quick unit-cost
+calculation.
+ Parts Radar: barcode scan, photo, voice note, bike-model search, and compatibility lookup.
+ WhatsApp / ecosystem chat: contextual communication with customer, supplier, rider, or internal team.
+ Quick capture: expense, stock adjustment, customer credit, delivery note, or part request.
+ Offline/sync indicator: persistent status showing local mode, pending operations, conflicts, and last successful
+synchronisation.
+10.3 Interaction standards
+  Any core counter workflow must be achievable in under 10 seconds for a trained user.
+ Use large touch targets, barcode-first search, recent-item shortcuts, and minimal mandatory fields.
+ Use progressive disclosure: cashiers see selling price and stock; owners can expand into cost, margin, supplier, and
+profitability views.
+
+--- PAGE 17 ---
+Master Ecosystem Blueprint v2.0
+Page 17
+ Every destructive or financially material action requires confirmation, reason code, and audit capture.
+ Support Kiswahili and English from launch; use market-native terminology rather than generic ERP language.
+
+--- PAGE 18 ---
+Master Ecosystem Blueprint v2.0
+Page 18
+11. Non-Functional Requirements
+Area
+Requirement
+Availability
+Core POS and inventory functions must remain usable offline; cloud services target high availability with graceful
+degradation
+Performance
+Routine product search, stock check, and sale completion must respond quickly on mid-range Android devices
+Scalability
+Architecture must support growth in tenants, branches, SKUs, transactions, requests, and AI workloads
+Data integrity
+No direct mutation of posted financial entries or historical stock movements
+Security
+Encryption, tenant isolation, least privilege, audit logging, secrets management, and device control
+Privacy
+Data minimisation, consent management, retention schedules, and user rights workflows
+Observability
+Logs, metrics, traces, sync lag, queue depth, integration failures, and business KPIs
+Recoverability
+Tested backups, restore procedures, disaster recovery, and incident communication
+Accessibility
+Readable typography, high-contrast options, large targets, and support for low-literacy workflows
+Localisation
+Kiswahili and English, Kenyan currency, date/time formats, phone-number formats, and local business terminology
+12. Governance, KPIs, and Acceptance
+The platform must be measured by business outcomes, not feature counts. The following KPIs should be instrumented from
+the first release.
+Area
+KPI
+Target direction
+Counter speed
+Median time from part selection to completed sale
+Under 10 seconds for routine sale
+Offline reliability
+Percentage of offline-created transactions successfully
+synchronised
+Above 99.5%
+Stock accuracy
+Variance between system stock and physical count
+Trending downward; material variances investigated
+Financial integrity
+Unexplained cash variance and unreconciled ledger entries
+Near zero; all exceptions resolved or escalated
+Parts Radar
+Percentage of requests matched to a verified compatible part
+Increasing over time
+Sourcing speed
+Median time from request to first qualified quote
+Reducing; target defined per urban/rural segment
+Inventory health
+Dead-stock value and stock-out rate for Class A items
+Reducing
+Customer retention
+Repeat purchase rate and buyer churn rate
+Improving
+AI quality
+Wrong-part rate, hallucinated-quote rate, approval override
+rate
+Controlled and declining
+Compliance
+eTIMS submission success rate and pending-invoice backlog
+High success; low backlog
+Trust
+Dispute rate, fraud-flag rate, verified-seller satisfaction
+Managed within defined thresholds
+13. Architectural Directive
+Build the ecosystem as a trustworthy operating system for motorcycle-parts commerce. The local device must remain useful
+when the network disappears; the cloud must provide intelligence, coordination, compliance, and network effects; and AI must
+amplify trusted operators rather than replace financial accountability.
+The foundational priorities are: canonical domain model, immutable financial ledger, explicit offline conflict policy, agent
+governance, parts-fitment data strategy, notification architecture, reporting architecture, and phased rollout. With these
+foundations, the ecosystem can become durable, secure, and commercially compelling for every participant in the motorcycle
+spare-parts supply chain.
+

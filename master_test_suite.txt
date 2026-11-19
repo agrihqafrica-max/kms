@@ -1,0 +1,739 @@
+MASTER TEST SUITE: END-TO-END 
+ECOSYSTEM VALIDATION (40 TEST 
+CASES) 
+MODULE 1: Tenant Onboarding, Authentication & RBAC (TC-01 to TC-05) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+01 
+Multi-Tenant 
+Organization 
+Registration 
+Platform 
+active 
+Register new 
+organization (org_type: 
+WHOLESALER), set KRA 
+PIN and compliance 
+toggles. 
+Organization is created in 
+DB; tenant UUID is 
+generated with default RLS 
+policies active. 
+TC-
+02 
+Role-Based 
+Access Control 
+(Cashier vs 
+Owner) 
+User 
+accounts 
+seeded 
+Log in as CASHIER and 
+attempt to view company 
+buying costs and owner 
+P&L dashboard. 
+System blocks access with 
+403 Forbidden and logs 
+navigation violation to 
+audit_logs. 
+TC-
+03 
+Row-Level 
+Security (RLS) 
+Isolation 
+Two distinct 
+orgs (Org_A, 
+Org_B) 
+loaded 
+Execute query against 
+branch_inventory as 
+Org_A requesting rows 
+belonging to Org_B. 
+Database returns 0 rows due 
+to active PostgreSQL RLS 
+session policy 
+(app.current_org_id). 
+TC-
+04 
+Branch 
+Assignment & 
+Manager 
+Scoping 
+Multiple 
+branches 
+under Org 
+Log in as 
+BRANCH_MANAGER for 
+Branch X. Query 
+inventory or sales for 
+Branch Y. 
+Access is restricted strictly to 
+Branch X data; Branch Y data 
+is filtered out. 
+TC-
+05 
+Password & 
+Override PIN 
+Hashing 
+User 
+creation 
+endpoint 
+open 
+Create new user with 
+plaintext password and 
+6-digit override PIN. 
+Inspect database table. 
+Passwords and PINs are 
+stored securely hashed via 
+bcrypt/argon2; plaintext is 
+never persisted. 
+MODULE 2: Importer Port-to-Godown Logistics (TC-06 to TC-08) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+06 
+Inbound 
+Container 
+Status Update 
+Importer 
+account active 
+Update container status 
+from IN_TRANSIT to 
+AT_GODOWN in Nairobi 
+warehouse. 
+System updates status 
+timestamp and triggers 
+automated notification to 
+subscribed wholesalers. 
+TC-
+07 
+Landed Cost 
+Multiplier 
+Propagation 
+Container 
+linked to stock 
+Apply landed cost 
+multiplier (1.1500) to 
+container items upon 
+godown arrival. 
+Buying cost of bulk stock 
+items automatically 
+multiplies by 1.1500 
+across inventory lots. 
+
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+08 
+Godown Bulk 
+Pre-Booking 
+Reservation 
+Wholesaler 
+viewing 
+inbound stock 
+Wholesaler pre-books 50 
+cartons of oil seals from 
+the incoming container 
+before port clearance. 
+Container allocation status 
+shifts to ALLOCATED for 
+those specific stock units. 
+MODULE 3: Wholesaler Inventory & Multi-UOM Breaking (TC-09 to TC-
+11) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+09 
+Multi-UOM 
+Inventory 
+Conversion 
+Item with pack 
+UOM (DOZEN) 
+in stock 
+Break 1 Master Carton 
+(12 Dozens / 144 
+Pieces) into base unit 
+inventory (PC). 
+System debits 1 carton and 
+credits 144 base units 
+without fractional rounding 
+errors. 
+TC-
+10 
+Blind-Stock 
+Network Search 
+Retailer 
+querying 
+network parts 
+Retailer searches for a 
+part out of stock in 
+their local branch. 
+Search returns organization 
+name, town, and availability 
+(IN_STOCK), while hiding 
+exact stock counts and 
+buying cost. 
+TC-
+11 
+Velocity 
+Classification 
+Tagging 
+Inventory sales 
+history loaded 
+Run inventory velocity 
+classification job 
+(A_FAST, 
+B_MEDIUM, 
+C_SLOW). 
+System categorizes SKUs 
+based on 30-day movement 
+frequency and updates 
+velocity flags. 
+MODULE 4: POS & Offline Edge-Mode Synchronization (TC-12 to TC-15) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+12 
+Offline 
+Counter 
+Billing via 
+PWA 
+Internet 
+disconnected 
+Process sale of 3 spare 
+parts while offline. Verify 
+local IndexedDB queue. 
+Sale is cached locally in 
+IndexedDB 
+(offline_sales_queue); 
+local stock decrements 
+instantly without blocking 
+cashier. 
+TC-
+13 
+Offline-to-
+Online Batch 
+Sync 
+Reconciliation 
+Reconnection 
+simulated 
+after offline 
+sales 
+Reconnect internet. 
+Trigger background 
+Service Worker sync 
+(POST 
+/api/v1/sales/sync-
+batch). 
+Server reconciles 
+timestamps, prevents 
+duplicate receipt generation, 
+and updates cloud DB. 
+TC-
+14 
+Mechanic 
+Referral 
+Tagging at 
+POS 
+Registered 
+mechanic 
+profile exists 
+Attach mechanic ID 
+(mech_uuid) to a retail 
+sale during POS 
+checkout. 
+Sale logs referral 
+relationship and earmarks 
+commission for month-end 
+payout calculation. 
+
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+15 
+AI Visual & 
+Voice Search 
+Integration 
+POS 
+camera/mic 
+active 
+Upload photo of a worn 
+brake pad or speak part 
+description into search 
+bar. 
+AI OCR parses part 
+contours/text, matches SKU, 
+and displays local/network 
+availability. 
+MODULE 5: Payment Gateways & M-Pesa Integration (TC-16 to TC-18) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+16 
+M-Pesa STK 
+Push Checkout 
+Initiation 
+Customer 
+phone 
+number 
+provided 
+Select MPESA_STK 
+payment method and 
+submit checkout for 
+KES 3,500. 
+System triggers STK push 
+prompt on customer phone, 
+captures CheckoutRequestID, 
+and opens polling loop. 
+TC-
+17 
+M-Pesa Callback 
+Verification & 
+Reconciliation 
+STK push 
+pending 
+Simulate M-Pesa 
+webhook callback 
+with ResultCode: 0 
+and transaction 
+reference QHG789XYZ. 
+System confirms payment, 
+updates order status to PAID, 
+and closes POS receipt loop. 
+TC-
+18 
+M-Pesa Timeout 
+/ User 
+Cancellation 
+Handling 
+STK push 
+pending 
+Simulate user 
+canceling STK 
+prompt on phone 
+(Timeout / 
+ResultCode: 1032). 
+POS catches failure callback, 
+releases locked temporary 
+stock, and prompts cashier for 
+alternate payment. 
+MODULE 6: Anti-Fraud, Manager PIN & Audit Logs (TC-19 to TC-21) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+19 
+Cashier 
+Discount 
+Threshold Lock 
+Cashier role 
+active 
+Apply 12% discount 
+on an item 
+(exceeding the 5% 
+cashier limit). 
+POS halts checkout and prompts 
+for Manager 6-digit Override 
+PIN. 
+TC-
+20 
+Manager PIN 
+Override & 
+Audit Logging 
+PIN prompt 
+active 
+Enter valid Manager 
+6-digit PIN to 
+authorize 12% 
+discount. 
+Checkout proceeds; system 
+executes immutable INSERT 
+INTO audit_logs capturing user 
+ID, timestamp, and JSON delta. 
+TC-
+21 
+Audit Log 
+Immutability 
+Enforcement 
+Audit logs 
+populated 
+Attempt to execute a 
+UPDATE or DELETE 
+statement on the 
+audit_logs table. 
+Database triggers/permissions 
+block modification, preserving 
+complete regulatory immutability. 
+MODULE 7: Parts Radar ("21-Call Eliminator") (TC-22 to TC-24) 
+
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+22 
+Parts Radar 
+Broadcast 
+Creation 
+Mechanic / 
+Retailer 
+logged in 
+Post a broadcast 
+request for a rare 
+Boxer BM150 
+steering stem with 
+photo and location. 
+System saves request in 
+parts_radar_requests with a 
+48-hour expiration timestamp. 
+TC-
+23 
+Regional 
+Wholesaler 
+Quote 
+Response 
+Radar 
+broadcast 
+active 
+Wholesaler views 
+broadcast in county 
+feed, submits quote 
+(Price: KES 2,800, 
+ETA: 2 hrs). 
+System inserts quote into 
+parts_radar_quotes and 
+notifies requester instantly. 
+TC-
+24 
+Quote 
+Reservation & 
+Stock Hold 
+Quote 
+accepted by 
+requester 
+Requester clicks 
+"Accept & Reserve 
+Quote". 
+System provisionally locks 1 unit 
+of stock in wholesaler inventory 
+to prevent double-selling. 
+MODULE 8: Inter-Organization WhatsApp Business Hub (TC-25 to TC-26) 
+ID 
+Test 
+Scenario / 
+Objective 
+Pre-
+conditions Test Steps Expected Result / Pass Criteria 
+TC-
+25 
+Inbound 
+WhatsApp 
+Webhook 
+Ingestion 
+Meta 
+WhatsApp 
+Cloud API 
+connected 
+Send incoming 
+WhatsApp message 
+inquiring about 
+spare part 
+availability from an 
+external stockist. 
+Webhook 
+/api/v1/webhooks/whatsapp 
+captures message, logs to 
+whatsapp_messages, and updates 
+thread. 
+TC-
+26 
+AI Co-Pilot 
+Intent 
+Parsing & 
+Quick Reply 
+WhatsApp 
+message 
+logged 
+AI Co-Pilot parses 
+inbound message 
+intent ("Needs 10 
+oil filters") and 
+drafts suggested 
+stock reply 
+template. 
+System displays AI draft reply on 
+dashboard for staff one-click approval 
+and dispatch. 
+MODULE 9: Dispatch Logistics & Proof of Delivery (TC-27 to TC-28) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+27 
+Dispatch 
+Manifest & 
+Waybill 
+Generation 
+Order packed 
+for delivery 
+Assign order to Boda Rider 
+(transport_mode: 
+BODA_RIDER) and generate 
+waybill. 
+System generates 
+waybill number and 
+dispatches pickup OTP 
+to recipient's phone. 
+TC-
+28 
+OTP Proof of 
+Delivery (POD) 
+Verification 
+Rider arrived 
+at destination 
+Rider inputs recipient's 4-
+digit drop-off OTP into 
+mobile web app. 
+System verifies OTP 
+hash, updates manifest 
+status to DELIVERED, 
+
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+and closes delivery 
+cycle. 
+MODULE 10: Buyer Pickup Analytics & Churn Alerts (TC-29 to TC-30) 
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+29 
+Pickup 
+Frequency 
+Tracking 
+Engine 
+Retailer 
+order history 
+loaded 
+System calculates 
+rolling 30-day 
+pickup frequency 
+and average days 
+between visits. 
+buyer_pickup_analytics updates 
+pickup count and interval metrics 
+automatically. 
+TC-
+30 
+Automated 
+Churn Risk 
+Alert 
+Flagging 
+Retailer 
+inactive for 
+14+ days 
+Run churn 
+detection job for 
+retailers whose 
+pickup interval 
+exceeded 
+threshold. 
+System flags account with 
+churn_risk_score = HIGH and 
+triggers alert notification on 
+wholesaler manager dashboard. 
+MODULE 11: Daily Expenses & EOD Net Profit Engine (TC-31 to TC-33) 
+ID 
+Test 
+Scenario / 
+Objective 
+Pre-
+conditions Test Steps Expected Result / Pass Criteria 
+TC
+-31 
+Daily 
+Expense 
+Logging & 
+OCR 
+Petty cash 
+disburseme
+nt made 
+Log daily operational 
+expense (KES 1,500 
+boda transport) with 
+receipt photo upload. 
+System saves expense record 
+categorized under TRANSPORT linked to 
+branch ID. 
+TC
+-32 
+Dynamic 
+EOD Net 
+Profit 
+Calculatio
+n 
+Business 
+day closed 
+with sales 
+& expenses 
+Execute EOD 
+reconciliation 
+endpoint (POST 
+/api/v1/finance/eo
+d-reconciliation). 
+System computes true Net Profit 
+dynamically: 
+Net Profit=(Gross Sales−COGS)−Expe
+nses. 
+TC
+-33 
+Cash 
+Variance 
+& Drawer 
+Discrepan
+cy Check 
+Cash 
+counted in 
+drawer 
+Input physical cash 
+count (e.g., KES 
+42,000) against 
+expected system cash 
+(KES 43,500). 
+System computes variance (−1,500 
+KES discrepancy), flags audit check, 
+and persists entry to 
+eod_reconciliations. 
+MODULE 12: Month-End Payout Batches & HR/Statutory (TC-34 to TC-35) 
+
+ID 
+Test 
+Scenario / 
+Objective 
+Pre-conditions Test Steps Expected Result / Pass Criteria 
+TC-
+34 
+AI Month-
+End Payout 
+Batch 
+Generation 
+Month closed, 
+commissions/salaries 
+accrued 
+Run monthly payroll 
+aggregation job. 
+System aggregates 
+staff salaries, 
+mechanic 
+commissions, supplier 
+bills, and statutory 
+deductions into an 
+AI_DRAFT batch. 
+TC-
+35 
+Owner 
+Digital 
+Sign-Off & 
+Execution 
+Lock 
+Batch in AI_DRAFT 
+state 
+Owner reviews payout 
+batch and executes digital 
+sign-off (POST 
+/payouts/{id}/owner-
+approve). 
+Status updates to 
+OWNER_APPROVED; 
+zero auto-debit 
+enforced—routed to 
+cashier for manual 
+bank/M-Pesa 
+execution reference 
+upload. 
+MODULE 13: Compliance Toggles (KRA eTIMS & Payroll Statutes) (TC-36 
+to TC-38) 
+ID Test Scenario / Objective Pre-conditions Test Steps Expected Result / Pass Criteria 
+TC-
+36 
+Compliance 
+Toggle ON 
+(KRA eTIMS 
+VSCU Active) 
+Organization 
+kra_compliance_enabled 
+= TRUE 
+Process retail 
+counter sale. 
+System computes 
+16% VAT, signs 
+invoice via VSCU 
+mock/API, and 
+generates CUIN and 
+QR code payload. 
+TC-
+37 
+Compliance 
+Toggle OFF 
+(Pure 
+Commercial 
+P&L Mode) 
+Organization 
+kra_compliance_enabled 
+= FALSE 
+Process retail 
+counter sale. 
+System bypasses 
+eTIMS signing 
+engine entirely; 
+records pure 
+commercial revenue 
+without tax additions. 
+TC-
+38 
+Statutory 
+Payroll 
+Deduction 
+Engine (ON vs 
+OFF) 
+Payroll batch processing 
+Test statutory 
+calculation 
+toggle (PAYE, 
+SHIF, NSSF, 
+Housing Levy) 
+when enabled vs 
+disabled. 
+When enabled, 
+statutory deductions 
+compute 
+automatically; when 
+disabled, gross equals 
+net payable. 
+MODULE 14: System Security, RLS Isolation & Edge Recovery (TC-39 to 
+TC-40) 
+
+ID Test Scenario / Objective Pre- conditions Test Steps Expected Result / Pass Criteria 
+TC-
+39 
+Database 
+Session Tenant 
+Context Reset 
+Concurrent 
+API requests 
+hitting pool 
+Send rapid concurrent 
+requests from 
+different organization 
+tokens through shared 
+connection pool. 
+get_db_with_tenant correctly 
+scopes SET LOCAL 
+app.current_org_id, 
+preventing any tenant data 
+bleed. 
+TC-
+40 
+Database 
+Failure & 
+Transaction 
+Rollback 
+Simulated 
+database 
+timeout 
+during 
+checkout 
+Trigger DB exception 
+mid-way through 
+POS checkout (after 
+header insert, before 
+inventory decrement). 
+Entire transaction rolls back 
+cleanly (db.rollback()), 
+ensuring zero partial records or 
+phantom inventory drops. 
+ 

@@ -1,0 +1,735 @@
+--- PAGE 1 ---
+Phased Implementation Roadmap v2.0
+Page 1
+ PHASED IMPLEMENTATION ROADMAP
+ VERSION 2.0
+ Kenya Motorcycle Spare Parts & Supply Chain Ecosystem
+ Detailed Build, Release, and Operational Plan
+Document type: Implementation roadmap and delivery plan
+Companion to: Master Ecosystem Blueprint v2.0
+Audience: Engineering, product, operations, commercial, and AI-agent teams
+Version: 2.0 | Date: 19 November 2026
+
+--- PAGE 2 ---
+Phased Implementation Roadmap v2.0
+Page 2
+1. Roadmap Principles
+The roadmap converts the Master Ecosystem Blueprint into a sequence of deliverable, testable, and commercially valuable
+releases. Each phase must produce a working outcome for a real business user, not merely technical infrastructure.
+The guiding rule is: establish trustworthy transactions first, then add intelligence, network effects, compliance, and
+autonomy. A phase is complete only when its acceptance criteria, data integrity checks, security controls, notifications,
+reports, and support procedures are operational.
+1.1 Delivery model
+  Value-releasing phases: Every phase delivers a usable business capability and measurable outcome.
+ Feature-flagged releases: New capabilities are deployed disabled, enabled for internal users, then released to selected
+pilot tenants and gradually expanded.
+ Tenant-stable cohorts: A tenant remains in the same rollout cohort so features do not appear and disappear between
+sessions.
+ Offline-first acceptance: No phase is considered complete if its core workflow fails during a network outage.
+ Ledger-first acceptance: Every financial and inventory event must reconcile before a phase is released.
+ Human-in-the-loop AI: AI capabilities are introduced as assistants first; autonomy expands only after accuracy, approval,
+and audit controls are proven.
+ Continuous discovery: Each phase includes user research, pilot feedback, support-ticket analysis, and measurable
+adoption review.
+1.2 Standard phase structure
+Element
+Definition
+Objective
+The business outcome the phase must achieve
+Scope
+Features, workflows, data, integrations, and roles included
+User stories
+Primary jobs-to-be-done expressed from the user perspective
+Data model additions
+New or extended canonical entities required
+Notifications
+Events that must trigger user or system communication
+Reports
+Operational and analytical outputs required
+Integrations
+External systems connected or prepared
+Acceptance criteria
+Testable conditions for phase completion
+KPIs
+Measures used to evaluate success
+Risks
+Major delivery, adoption, security, or operational risks
+Dependencies
+Prior-phase capabilities or external prerequisites
+
+--- PAGE 3 ---
+Phased Implementation Roadmap v2.0
+Page 3
+2. Phase 0 — Platform Foundation
+Objective: Establish a secure, multi-tenant, observable, and extensible platform foundation that can support every later
+business capability.
+2.1 Scope
+  Multi-tenant architecture with tenant isolation across database, API, cache, search, file storage, analytics, and AI context.
+ Tenant onboarding: business name, category, location, contacts, branches, operating hours, currency, language, and
+timezone.
+ User registration, phone OTP, passwordless options, sessions, password recovery, and device trust.
+ Role-based and attribute-based access control: owner, manager, cashier, storekeeper, accountant, sales agent, mechanic,
+rider, and platform admin.
+ Branch and location management, staff assignment, approval limits, cost visibility, and permission matrix.
+ Immutable audit logging for authentication, permission changes, approvals, overrides, exports, and sensitive actions.
+ Canonical data model, API standards, event backbone, idempotency framework, and versioning strategy.
+ CI/CD, staging environment, feature flags, monitoring, logging, tracing, alerting, backup, and restore procedures.
+ Admin console for tenant management, support, moderation, integration health, and platform configuration.
+2.2 User stories
+  As an owner, I can create my business profile, add branches, invite staff, and assign permissions.
+ As a manager, I can approve actions within my assigned limit and see an audit trail.
+ As a platform administrator, I can onboard, suspend, or support a tenant without accessing private financial data.
+ As a developer, I can deploy a new feature behind a flag and roll it back without redeploying the application.
+2.3 Data model additions
+  Tenant, Branch, Location, User, Role, Permission, Device, Session, API Key, Audit Event, Feature Flag, Integration
+Credential.
+ Party, Contact, Address, Consent Record, Verification Document, Verification Status.
+ Notification Preference, Notification Template, Notification Delivery, Opt-Out Record.
+2.4 Notifications and reports
+  Account-created, device-enrolled, password-changed, suspicious-login, permission-changed, and account-suspended
+notifications.
+ Tenant-onboarding checklist, setup progress, and missing-configuration alerts.
+ Platform health report: uptime, error rate, API latency, queue depth, sync lag, integration failures, and active tenants.
+ Security report: failed logins, privileged actions, permission changes, device enrolments, and audit exceptions.
+2.5 Acceptance criteria
+  A tenant can be created, staff invited, roles assigned, and permissions enforced.
+ No tenant can access another tenant’s data through any API, report, search, file, cache, or AI context.
+ Every sensitive action is recorded with user, role, branch, device, timestamp, and before/after values where applicable.
+ Feature flags can enable or disable a capability without redeployment.
+ Monitoring detects errors, latency, queue backlog, and integration failure within defined alert thresholds.
+2.6 KPIs and risks
+KPI / risk
+Measure or mitigation
+Tenant isolation
+Zero cross-tenant data-access incidents in security testing
+
+--- PAGE 4 ---
+Phased Implementation Roadmap v2.0
+Page 4
+KPI / risk
+Measure or mitigation
+Audit coverage
+100% of defined sensitive actions produce audit events
+Deployment safety
+Feature flags allow rollback without code deployment
+Observability
+Error, latency, queue, and sync-lag dashboards operational
+Risk
+Over-complex permissions; mitigate with role templates and approval thresholds
+Risk
+Weak tenant isolation; mitigate with automated isolation tests and penetration testing
+
+--- PAGE 5 ---
+Phased Implementation Roadmap v2.0
+Page 5
+3. Phase 1 — Counter-First POS and Offline Trading
+Objective: Enable a single retail shop to sell, receive payment, issue receipts, record expenses, and reconcile cash reliably,
+including during internet loss.
+3.1 Scope
+  Offline-capable PWA with local encrypted transaction store, service worker, background synchronisation, and sync-status
+indicator.
+ Fast product search by barcode, name, SKU, bike model, category, and recent items.
+ POS sale workflow: add items, select customer, apply permitted discount, select payment method, complete sale, and
+issue receipt.
+ Cash, mobile-money reference, bank transfer, card reference, and mixed-payment capture.
+ Thermal-print, PDF, WhatsApp, SMS, and email receipt delivery.
+ Returns, exchanges, refunds, credit notes, and manager-approved exceptions.
+ Customer profiles, contact details, purchase history, credit balance, and consent records.
+ Daily expense capture: transport, lunch, petty cash, airtime, utilities, rent, packaging, and miscellaneous costs.
+ Cash-drawer control: opening float, sales, expenses, payouts, change issued, closing count, and variance investigation.
+ Owner dashboard: sales, gross profit, expenses, net profit, cash position, top items, low stock, and pending approvals.
+3.2 User stories
+  As a cashier, I can scan a barcode and complete a cash sale in under 10 seconds.
+ As a cashier, I can complete a sale while offline and see that it is saved locally.
+ As an owner, I can see today’s sales, expenses, gross profit, net profit, and cash variance.
+ As a customer, I can receive a digital receipt on WhatsApp or SMS.
+3.3 Data model additions
+  Product, SKU, Variant, Barcode, Price List, Price Version, Customer, Sale, Sale Line, Payment, Receipt, Return, Credit
+Note.
+ Expense, Expense Category, Cash Session, Cash Count, Cash Variance, Discount Rule, Approval Request.
+ Offline Operation, Sync Queue Item, Idempotency Key, Device Sequence, Conflict Record.
+3.4 Notifications
+  Sale-completed receipt to customer via selected channel.
+ Payment-received confirmation to owner and cashier.
+ Discount-above-threshold approval request to manager.
+ Refund or return approval request to manager.
+ Cash-variance alert to owner and branch manager.
+ Daily business summary to owner at configured time.
+ Sync-failure or pending-operation alert to owner and device user.
+3.5 Reports
+  Daily sales report: revenue, quantity, discounts, returns, payment mix, and staff performance.
+ Daily profit report: gross sales, COGS, expenses, gross profit, net profit, and margin.
+ Cash reconciliation report: opening float, sales, expenses, payouts, expected cash, counted cash, and variance.
+ Customer credit report: outstanding balance, ageing, overdue amount, and payment history.
+ Product performance report: top-selling items, slow-moving items, margin contribution, and stock-out items.
+
+--- PAGE 6 ---
+Phased Implementation Roadmap v2.0
+Page 6
+ Sync health report: pending operations, failed operations, conflicts, device ID, and last successful sync.
+3.6 Acceptance criteria
+  A cashier completes a routine sale in under 10 seconds.
+ The shop can sell, issue receipts, deduct stock, and record expenses during a network outage.
+ All offline transactions synchronise without duplicate sales, payments, or stock movements.
+ Daily cash and stock reconcile within approved tolerance.
+ Owner can see sales, COGS, expenses, gross profit, net profit, cash position, and pending approvals.
+3.7 KPIs and risks
+KPI / risk
+Measure or mitigation
+Counter speed
+Median sale-completion time under 10 seconds
+Offline reliability
+Over 99.5% of offline transactions synchronise successfully
+Cash integrity
+Unexplained cash variance near zero
+Adoption
+Percentage of daily sales completed through POS
+Risk
+Poor barcode data; mitigate with catalogue-import tools and barcode QA
+Risk
+Offline storage limits; mitigate with data pruning, compression, and device-capacity monitoring
+Risk
+Staff misuse; mitigate with role limits, approval thresholds, and immutable audit logs
+
+--- PAGE 7 ---
+Phased Implementation Roadmap v2.0
+Page 7
+4. Phase 2 — Inventory, Catalogue, and Procurement
+Objective: Turn stock into a controlled, profitable, and replenishable supply-chain asset.
+4.1 Scope
+  Parts Master with canonical part ID, name, description, category, brand, barcode/EAN, packaging, dimensions, weight,
+images, and documents.
+ SKU and variant management, including quality grade, pack configuration, unit of measure, and unit conversion.
+ Bike-model registry and fitment records with make, model, variant, engine code, year range, side, position, and confidence.
+ OEM and aftermarket cross-reference mapping with source, confidence, conflict handling, and version history.
+ Multi-location inventory across shops, warehouses, godowns, vehicles, and in-transit locations.
+ Stock movements for receipt, sale, transfer, adjustment, return, damage, assembly, and count variance.
+ Stock reservations with expiry, priority, source order, and release rules.
+ Batch, lot, serial, expiry, and warranty traceability where applicable.
+ Stock counts, variance approval, adjustment reasons, and shrinkage investigation.
+ Supplier profiles, purchase requisitions, supplier quotations, purchase orders, approvals, GRNs, and supplier invoices.
+ Landed-cost calculation: freight, insurance, customs, clearing, handling, transport, and allocation across items.
+ Purchase returns, supplier credits, warranty claims, and quality-complaint workflows.
+ Reorder recommendations based on velocity, lead time, safety stock, open POs, reservations, and cash constraints.
+ Dead-stock detection, ageing analysis, markdown proposals, transfer suggestions, and liquidation queue.
+4.2 User stories
+  As a storekeeper, I can receive a purchase order, record partial delivery, and identify damaged or missing items.
+ As a manager, I can transfer stock between branches and confirm receipt at the destination.
+ As an owner, I can see which items are fast-moving, slow-moving, dead stock, or below reorder point.
+ As a procurement officer, I can approve a purchase-order draft with quantity, supplier, cost, and expected arrival.
+4.3 Data model additions
+  Supplier, Supplier Catalogue, Requisition, Supplier Quote, Purchase Order, PO Line, GRN, GRN Line, Landed Cost,
+Supplier Invoice.
+ Stock Location, Stock Lot, Stock Movement, Reservation, Transfer, Stock Count, Count Line, Adjustment, Damage
+Record.
+ Fitment, Bike Model, OEM Cross-Reference, Catalogue Version, Data Quality Score, Reorder Rule, Reorder
+Recommendation.
+4.4 Notifications
+  Low-stock, critical-stock, and reorder-point alerts.
+ Reorder-draft-ready notification to owner and procurement.
+ PO-created, PO-approved, PO-dispatched, and PO-received notifications.
+ GRN discrepancy, damaged-goods, and supplier-quality-complaint alerts.
+ Stock-transfer-dispatched and stock-transfer-received notifications.
+ Stock-count-variance approval request and approval outcome.
+ Dead-stock and ageing-stock alerts.
+ Supplier-performance exception alerts.
+4.5 Reports
+
+--- PAGE 8 ---
+Phased Implementation Roadmap v2.0
+Page 8
+ Stock health report: stock value, ageing, turnover, dead stock, stock-out rate, shrinkage, and reorder needs.
+ Purchase performance report: PO status, supplier fill rate, lead time, price variance, landed cost, and returns.
+ Inventory valuation report: cost layers, stock value, COGS, margin, and valuation snapshots.
+ Stock-movement audit report: receipts, issues, transfers, adjustments, and approvals.
+ Catalogue-quality report: missing images, missing fitment, duplicate parts, unverified cross-references, and data errors.
+ Supplier scorecard: price competitiveness, fill rate, lead time, defect rate, responsiveness, and return rate.
+4.6 Acceptance criteria
+  Every inventory movement is traceable to an approved source document.
+ Stock-on-hand, stock value, COGS, and profit reconcile with the financial ledger.
+ Managers can approve or reject a purchase-order draft in one action.
+ The system identifies fast-moving, slow-moving, and dead stock reliably.
+ Partial receipts, returns, and damaged goods update stock and financial records correctly.
+4.7 KPIs and risks
+KPI / risk
+Measure or mitigation
+Stock accuracy
+Variance between system stock and physical count trending downward
+Reorder quality
+Percentage of reorder recommendations accepted or adjusted within policy
+Dead stock
+Value and percentage of dead stock reducing over time
+Supplier reliability
+Fill rate, lead time, defect rate, and return rate tracked per supplier
+Risk
+Bad fitment data; mitigate with verification workflow, confidence levels, and wrong-part feedback
+Risk
+Cost allocation errors; mitigate with landed-cost templates, approval, and reconciliation checks
+
+--- PAGE 9 ---
+Phased Implementation Roadmap v2.0
+Page 9
+5. Phase 3 — Wholesale, Credit, and Fulfilment
+Objective: Enable wholesalers and distributors to manage multi-branch stock, customer credit, dispatch, riders, and buyer
+retention.
+5.1 Scope
+  Multi-branch warehouse management, stock transfers, in-transit stock, and receiving confirmation.
+ Customer-specific price lists, trade discounts, promotional pricing, and customer credit limits.
+ Credit sales, outstanding balance, ageing, payment plans, reminders, and collection follow-up.
+ Sales orders, back-orders, partial fulfilment, delivery notes, waybills, invoices, and receipts.
+ Dispatch planning, picking, packing, route assignment, rider assignment, and delivery scheduling.
+ Rider app: assigned deliveries, route view, status updates, proof of delivery, COD collection, incident reporting, and
+earnings.
+ Pickup, matatu-shuttle, courier, and self-collection fulfilment options.
+ Delivery-zone configuration, delivery fees, cut-off times, and service-level expectations.
+ Buyer churn radar based on restocking interval, order value trend, payment behaviour, and engagement.
+ Wholesale sales-agent workspace for customer ledger, order pipeline, credit status, delivery scheduling, and follow-ups.
+5.2 User stories
+  As a wholesaler, I can allocate stock across branches and dispatch an order to a rider.
+ As a sales agent, I can see a customer’s credit limit, outstanding balance, and restocking pattern.
+ As a rider, I can view assigned deliveries, capture proof of delivery, and record COD collection.
+ As an owner, I can identify buyers whose restocking cycle has changed before they stop ordering.
+5.3 Data model additions
+  Customer Price List, Credit Limit, Credit Application, Receivable, Payment Plan, Collection Task.
+ Sales Order, Order Line, Fulfilment Plan, Delivery, Delivery Line, Waybill, Rider, Route, Proof of Delivery, Incident.
+ Rider Earning, Commission Rule, Settlement Batch, Buyer Engagement Event, Churn Risk Score.
+5.4 Notifications
+  Order-created, order-confirmed, order-ready, and order-dispatched notifications.
+ Delivery-assigned, delivery-started, delivery-completed, delivery-failed, and delivery-delayed notifications.
+ Proof-of-delivery-uploaded and COD-collected notifications.
+ Credit-limit-approaching, credit-limit-exceeded, payment-due, and overdue-payment notifications.
+ Buyer-churn-risk alert to sales agent and owner.
+ Stock-transfer-dispatched and stock-transfer-received notifications.
+ Rider-settlement-ready notification to owner.
+5.5 Reports
+  Wholesale sales report: revenue, margin, customer, branch, sales agent, product, and payment status.
+ Credit and receivables report: outstanding balance, ageing, overdue amount, credit exposure, and collection status.
+ Fulfilment report: order status, fulfilment time, delivery success, failed delivery, return-to-sender, and customer rating.
+ Rider performance report: deliveries, on-time rate, completion rate, COD variance, incidents, and earnings.
+ Buyer-retention report: repeat purchase rate, restocking interval, order-value trend, churn risk, and recovery actions.
+ Branch-performance report: sales, stock, margin, credit exposure, fulfilment time, and staff productivity.
+
+--- PAGE 10 ---
+Phased Implementation Roadmap v2.0
+Page 10
+5.6 Acceptance criteria
+  A wholesaler can receive, allocate, dispatch, and reconcile stock across branches.
+ Credit sales cannot exceed an approved customer limit without manager approval.
+ Delivery confirmation, COD, returns, and rider commissions reconcile with the ledger.
+ The churn radar produces actionable, explainable alerts.
+ Proof of delivery and COD collection are traceable to a rider, order, and timestamp.
+
+--- PAGE 11 ---
+Phased Implementation Roadmap v2.0
+Page 11
+6. Phase 4 — Parts Radar and Compatibility
+Objective: Enable mechanics and retailers to find verified compatible parts quickly, reducing repeated phone calls and
+wrong-part purchases.
+6.1 Scope
+  Reverse-search request creation with bike model, part description, photo, voice note, urgency, location area, and budget.
+ AI-assisted interpretation, candidate matching, compatibility ranking, clarification questions, and draft response.
+ Verified-stockist matching based on fitment, category, location area, availability status, delivery ETA, and reliability.
+ Quote submission with price, pack size, availability, condition, warranty, and delivery promise.
+ Quote comparison, reservation, order conversion, dispatch, delivery, and confirmation.
+ Blind-stock visibility rules that hide exact quantities, buying costs, and customer lists.
+ Reputation, dispute, cancellation, no-show, and quality-feedback management.
+ Catalogue-governance workflow: supplier submission, duplicate detection, data-quality scoring, approval, publication, and
+takedown.
+6.2 User stories
+  As a mechanic, I can photograph a part, record a voice note, and receive nearby compatible-stock options.
+ As a retailer, I can source a missing part from a verified wholesaler without exposing my margin.
+ As a wholesaler, I can respond to a part request with price, availability, and delivery promise.
+ As a buyer, I can reserve a part for a defined period and convert the reservation into an order.
+6.3 Data model additions
+  Part Request, Request Media, Request Match, Supplier Quote, Quote Response, Reservation, Reservation Expiry, Match
+Score.
+ Fitment Verification, Compatibility Rule, Confidence Score, Wrong-Part Report, Quality Complaint, Seller Reputation.
+ Network Visibility Rule, Lead, Referral, Referral Commission, Dispute, Dispute Evidence, Resolution.
+6.4 Notifications
+  Part-request-created confirmation to requester.
+ New eligible request notification to verified stockists.
+ Quote-received notification to buyer.
+ Reservation-created, reservation-expiring, and reservation-expired notifications.
+ Quote-accepted and order-created notifications to seller and buyer.
+ Dispatched, delivered, and delivery-confirmed notifications.
+ Wrong-part report and quality-complaint notifications.
+ Seller-reputation-change notification.
+6.5 Reports
+  Parts Radar performance report: requests, match rate, quote rate, conversion rate, fulfilment time, and wrong-part rate.
+ Compatibility-quality report: verified fits, likely fits, conflicts, missing fitment, and data-quality score.
+ Seller-response report: response time, quote rate, availability accuracy, fulfilment rate, and customer rating.
+ Network-demand report: most-requested parts, unmet demand, regional gaps, and recurring compatibility issues.
+ Referral report: referrals, conversion, commission earned, payout status, and fraud flags.
+6.6 Acceptance criteria
+
+--- PAGE 12 ---
+Phased Implementation Roadmap v2.0
+Page 12
+ A mechanic can submit a part request in under 30 seconds.
+ The system distinguishes verified fit, likely fit, and requires-confirmation matches.
+ Buyers can see availability and delivery estimate without seeing supplier cost or exact stock depth.
+ Incorrect matches generate feedback that improves catalogue quality and future matching.
+ Quotes expire automatically and reservations create time-bound holds.
+
+--- PAGE 13 ---
+Phased Implementation Roadmap v2.0
+Page 13
+7. Phase 5 — AI Co-Pilots and Automation
+Objective: Introduce governed AI assistance that improves decisions, reduces manual work, and protects profitability without
+removing human accountability.
+7.1 Scope
+  Agent Control Plane: agent identity, scopes, permissions, model version, confidence thresholds, approval queues, and kill
+switches.
+ Financial & Margin Guardian: margin erosion, cash variance, expense anomalies, profit milestones, payout preparation,
+and reconciliation exceptions.
+ Inventory & Reorder Intelligence: velocity classification, reorder drafts, dead-stock actions, shrinkage detection, and churn
+alerts.
+ Parts Radar / Compatibility Agent: request interpretation, candidate ranking, compatibility explanation, and quote drafting.
+ WhatsApp Co-Pilot: inbound intent detection, inventory-aware quote drafts, daily briefings, receipts, reminders, and
+follow-ups.
+ Fraud & Risk Sentinel: unusual discounts, refunds, stock adjustments, account behaviour, referral abuse, and fake listings.
+ Customer Success Agent: churn detection, outreach drafts, follow-up scheduling, and consent-aware campaigns.
+ AI feedback loop: wrong-part reports, rejected recommendations, approval overrides, and outcome tracking.
+7.2 User stories
+  As an owner, I can receive a morning briefing showing yesterday’s profit, top items, low stock, and cash exceptions.
+ As an owner, I can approve a purchase-order draft generated from stock-depletion patterns.
+ As a cashier, I can receive a drafted WhatsApp reply for a customer asking about part availability.
+ As a manager, I can review an AI fraud flag with evidence before suspending an account or reversing a transaction.
+7.3 Data model additions
+  Agent, Agent Scope, Agent Policy, Agent Decision, Agent Recommendation, Approval Queue, Approval Decision, Model
+Version.
+ Confidence Score, Evidence Bundle, Feedback Event, Override Record, Automation Rule, Automation Execution,
+Kill-Switch Event.
+7.4 Notifications
+  Daily executive briefing to owner.
+ Margin-anomaly, cash-variance, expense-anomaly, and profit-milestone alerts.
+ Reorder-draft-ready and dead-stock-action notifications.
+ Churn-risk and customer-follow-up notifications.
+ Fraud-flag and approval-required notifications.
+ AI-recommendation-accepted, rejected, or overridden notifications.
+ Agent-error, policy-violation, and kill-switch notifications.
+7.5 Reports
+  AI performance report: recommendations, approval rate, override rate, accuracy, cost, latency, and incidents.
+ Margin-protection report: SKUs below threshold, discount impact, margin erosion, and corrective actions.
+ Inventory-intelligence report: forecast accuracy, stock-out prevention, dead-stock reduction, and reorder acceptance.
+ Fraud report: flagged events, confirmed fraud, false-positive rate, and recovery value.
+ Customer-success report: churn-risk conversion, outreach response rate, retention improvement, and campaign
+performance.
+
+--- PAGE 14 ---
+Phased Implementation Roadmap v2.0
+Page 14
+7.6 Acceptance criteria
+  No agent can execute a payment, expose another tenant’s private data, or send an unapproved external message.
+ Every material agent recommendation is logged with inputs, confidence, model version, approver, and outcome.
+ Payout batches remain locked until the owner gives explicit digital approval.
+ Wrong-part rate, hallucinated-quote rate, and approval override rate are tracked and declining.
+ Owners and platform administrators can suspend an agent or revoke its scopes immediately.
+
+--- PAGE 15 ---
+Phased Implementation Roadmap v2.0
+Page 15
+8. Phase 6 — Compliance, Payments, and Settlement
+Objective: Make the platform safe for formal businesses while preserving a simple commercial mode for informal traders, and
+ensure payments reconcile with the ledger.
+8.1 Scope
+  Tenant-level compliance configuration: VAT status, eTIMS connection, PAYE, SHIF, NSSF, Housing Levy, and document
+storage.
+ Configurable compliance switches that activate invoice fields, tax calculation, eTIMS submission, and statutory reporting.
+ eTIMS VSCU integration with asynchronous submission queue, retry logic, failure handling, and reconciliation dashboard.
+ Electronic invoice payload, QR/CUIN data, submission status, invoice signature, and audit history.
+ Invoice numbering, credit-note numbering, receipt templates, and document-version control.
+ M-Pesa/mobile-money and card-payment integrations, webhook verification, refunds, and reconciliation.
+ Settlement ledger for marketplace transactions, referral commissions, rider payouts, supplier payments, and dispute holds.
+ Tax reports, financial exports, accountant-facing reconciliation views, and audit-ready document storage.
+8.2 User stories
+  As an owner, I can switch on VAT and eTIMS compliance without losing historical commercial data.
+ As a cashier, I can complete a sale while eTIMS is temporarily unavailable and see that the invoice is queued.
+ As an accountant, I can see pending, submitted, accepted, and failed eTIMS invoices.
+ As an owner, I can approve a payout batch for salaries, commissions, supplier bills, and rider earnings.
+8.3 Data model additions
+  Tax Profile, Tax Rate, Tax Rule, Invoice Signature, eTIMS Submission, eTIMS Status, Compliance Exception.
+ Payment Provider, Payment Transaction, Webhook Event, Refund, Settlement, Settlement Batch, Payout, Payout
+Approval.
+ Payroll Period, Payslip, Statutory Deduction, Commission, Commission Rule, Payout Instruction.
+8.4 Notifications
+  Compliance-mode-enabled and compliance-mode-disabled notifications.
+ eTIMS-submitted, accepted, rejected, retry-scheduled, and manually-resolved notifications.
+ VAT-summary and filing-reminder notifications.
+ Payment-received, payment-failed, refund-issued, and settlement-completed notifications.
+ Payout-batch-ready and payout-approved notifications.
+ Payroll-period-open, payslip-ready, and statutory-deduction-exception notifications.
+8.5 Reports
+  Compliance dashboard: invoice status, eTIMS submissions, VAT summary, exceptions, and pending documents.
+ Tax report: output VAT, input VAT, net VAT, exempt sales, zero-rated sales, and filing readiness.
+ Payment reconciliation report: expected, received, pending, failed, refunded, and unmatched transactions.
+ Settlement report: marketplace fees, referral commissions, rider earnings, supplier payables, and payout status.
+ Payroll report: gross pay, deductions, net pay, statutory contributions, and payout approval status.
+8.6 Acceptance criteria
+  A tax-enabled tenant can issue and submit eTIMS invoices, with clear pending/accepted/failed status.
+ A temporary eTIMS outage does not prevent a cash sale; the compliance document is queued for submission.
+
+--- PAGE 16 ---
+Phased Implementation Roadmap v2.0
+Page 16
+ Payment references, bank/M-Pesa settlements, invoices, and ledger entries reconcile.
+ Compliance mode can be enabled without losing historical commercial data.
+ No payout executes without explicit owner approval and a compliant payment provider.
+KRA guidance states that persons carrying on business in Kenya are required to onboard to eTIMS and issue electronic tax invoices; VSCU is
+designed for system-to-system integration and is suitable for bulk invoicing and systems that do not always operate online.
+[web:31][web:32][web:35][web:39]
+
+--- PAGE 17 ---
+Phased Implementation Roadmap v2.0
+Page 17
+9. Phase 7 — Network Marketplace and Trust
+Objective: Enable safe cross-tenant commerce, referrals, reputation, and commercial settlement without exposing private
+business data.
+9.1 Scope
+  Verified business profiles, tiered KYB/KYC, tax status, delivery reliability, and product-quality reputation.
+ Blind-stock network visibility: availability, general area, delivery ETA, and seller rating, but not exact quantity or buying cost.
+ Network listing management, category permissions, service areas, fulfilment options, and pricing-policy controls.
+ Referral programme for mechanics, retailers, and sales agents, with attribution, commission rules, wallets, and payouts.
+ Dispute resolution: evidence upload, counterparty response, platform review, refund/credit-note decision, and reputation
+impact.
+ Marketplace commercial model: subscriptions, lead fees, fulfilment fees, referral commissions, and settlement rules.
+ Manufacturer/exporter dashboard with anonymised demand trends, SKU velocity, quality complaints, and
+authorised-distributor management.
+ Fraud controls for fake stock, quote manipulation, fake delivery confirmation, referral self-dealing, duplicate accounts, and
+collusive pricing.
+9.2 User stories
+  As a buyer, I can discover and reserve a part from a verified seller without seeing private commercial data.
+ As a seller, I can control which parts, areas, and fulfilment options are visible on the network.
+ As a mechanic, I can earn a referral commission when a rider purchases from a partner shop.
+ As a platform operator, I can review a dispute with evidence and issue a fair resolution.
+9.3 Data model additions
+  Network Listing, Visibility Rule, Seller Verification, Reputation Score, Review, Rating, Quality Feedback.
+ Lead, Referral, Referral Attribution, Commission Wallet, Commission Transaction, Payout Request.
+ Dispute, Dispute Party, Dispute Evidence, Resolution, Penalty, Account Restriction, Fraud Case.
+9.4 Notifications
+  Verification-submitted, approved, rejected, and expired notifications.
+ New-network-request, new-quote, quote-expiring, and reservation-expiring notifications.
+ Referral-earned, referral-converted, commission-credited, and payout-ready notifications.
+ Dispute-opened, response-required, resolution-issued, and reputation-changed notifications.
+ Fraud-flag, account-restriction, and appeal-decision notifications.
+ Manufacturer demand-trend and quality-complaint notifications.
+9.5 Reports
+  Network-commerce report: requests, matches, quotes, conversions, GMV, fulfilment rate, and dispute rate.
+ Trust-and-safety report: verified sellers, fraud cases, dispute outcomes, penalties, and appeal results.
+ Referral report: referrals, conversion, commission earned, payout status, and fraud flags.
+ Manufacturer demand report: anonymised SKU velocity, regional demand, quality complaints, and recurring gaps.
+ Marketplace economics report: lead fees, fulfilment fees, referral costs, settlement volume, and net platform revenue.
+9.6 Acceptance criteria
+  A buyer can discover and reserve a part from a verified seller without seeing private commercial data.
+ Referral commissions are calculated correctly and cannot be claimed through self-referral or manipulated accounts.
+
+--- PAGE 18 ---
+Phased Implementation Roadmap v2.0
+Page 18
+ Disputes have a defined lifecycle, evidence trail, and resolution outcome.
+ Marketplace fees and settlements reconcile in the financial ledger.
+ Fraud controls prevent obvious fake stock, fake delivery, and referral abuse.
+
+--- PAGE 19 ---
+Phased Implementation Roadmap v2.0
+Page 19
+10. Phase 8 — Scale, Intelligence, and Partner Ecosystem
+Objective: Expand from a working ecosystem into a scalable platform with advanced intelligence, partner integrations, and
+controlled automation.
+10.1 Scope
+  Demand forecasting at SKU-location level with explainability and confidence intervals.
+ Automated low-risk workflows: reorder reminders, routine customer follow-ups, catalogue-quality suggestions, and
+stock-transfer proposals.
+ Partner APIs for manufacturers, logistics firms, insurers, accounting tools, financing providers, and marketplaces.
+ Data warehouse and advanced analytics: branch performance, customer retention, supplier performance, stock health, and
+agent effectiveness.
+ Advanced fraud controls, partner certification, SLA monitoring, and ecosystem governance.
+ Controlled expansion across regions, verticals, tenant segments, and product categories.
+ Advanced personalisation, dynamic pricing guardrails, and demand-driven assortment recommendations.
+10.2 User stories
+  As an owner, I can see a forecast of next month’s demand for key SKUs and approve a replenishment plan.
+ As a manufacturer, I can receive anonymised demand signals and adjust production or distribution.
+ As a partner, I can integrate delivery, insurance, financing, or accounting services through approved APIs.
+ As a platform operator, I can monitor ecosystem health, partner SLAs, fraud, and revenue performance.
+10.3 Data model additions
+  Forecast, Forecast Version, Demand Signal, Assortment Recommendation, Pricing Guardrail, Partner, Partner API
+Credential.
+ Analytics Cube, Metric Definition, Data Retention Policy, SLA, Partner Certification, Ecosystem Governance Record.
+10.4 Notifications
+  Forecast-ready, forecast-deviation, and replenishment-plan notifications.
+ Partner-API-error, SLA-breach, certification-expiry, and partner-suspension notifications.
+ Advanced fraud, policy-violation, and governance-exception notifications.
+ Expansion-readiness, capacity, and performance-degradation notifications.
+10.5 Reports
+  Demand-forecast report: forecast accuracy, bias, confidence interval, stock-out prevention, and overstock risk.
+ Partner-performance report: API uptime, latency, error rate, fulfilment quality, and SLA compliance.
+ Ecosystem-health report: active tenants, transaction volume, GMV, retention, support load, fraud, and revenue.
+ Unit-economics report: acquisition cost, activation rate, retention, transaction volume, support cost, and gross margin.
+
+--- PAGE 20 ---
+Phased Implementation Roadmap v2.0
+Page 20
+11. Cross-Phase Enablers
+Certain capabilities must be designed once and reused across every phase. They should not be rebuilt independently inside
+individual modules.
+11.1 Notification service
+  Central notification service with templates, channels, audience rules, priority, scheduling, delivery status, retries, and
+opt-out management.
+ Channels: in-app, WhatsApp, SMS, email, push notification, and PDF/printed document.
+ Notification categories: transactional, operational, financial, compliance, marketing, security, and system health.
+ Rate limits, quiet hours, frequency caps, language preference, and role-based delivery rules.
+ Delivery tracking, failure reasons, retry queue, dead-letter queue, and audit trail.
+11.2 Reporting service
+  Central reporting service with metric definitions, filters, date ranges, branch scope, role-based access, export formats, and
+scheduled delivery.
+ Report types: operational, financial, inventory, customer, supplier, fulfilment, compliance, AI, and platform health.
+ Export to PDF, Excel/CSV, and accountant-ready formats.
+ Scheduled reports delivered by WhatsApp, email, or in-app notification.
+ Data lineage, calculation documentation, and reconciliation checks.
+11.3 Profile and verification service
+  Progressive profiles for businesses, staff, customers, mechanics, riders, suppliers, and partners.
+ KYB/KYC workflow with document upload, review, approval, rejection, expiry, and re-verification.
+ Verification levels that unlock marketplace selling, referrals, credit, higher limits, and partner APIs.
+ Consent registry for WhatsApp, SMS, email, marketing, location sharing, and data processing.
+ Account-recovery, suspension, appeal, and reinstatement workflows.
+11.4 Approval and audit service
+  Central approval engine for discounts, refunds, stock adjustments, purchase orders, credit limits, payouts, exports, and
+agent actions.
+ Approval thresholds by role, branch, amount, category, and risk level.
+ Approval delegation, escalation, reminder, expiry, and four-eyes control for high-risk actions.
+ Immutable audit trail with actor, action, object, reason, device, timestamp, and outcome.
+11.5 Integration and reconciliation service
+  Integration registry with credentials, endpoints, rate limits, retry policy, and health status.
+ Webhook receiver with signature verification, replay protection, idempotency, and dead-letter handling.
+ Reconciliation engine for payments, eTIMS submissions, stock movements, deliveries, referrals, and settlements.
+ Integration dashboard showing latency, success rate, failures, queue depth, and last successful synchronisation.
+
+--- PAGE 21 ---
+Phased Implementation Roadmap v2.0
+Page 21
+12. Release Management
+Every release must follow a controlled path from development to production, with clear ownership, testing, rollback, and
+support readiness.
+Stage
+Activities
+Exit condition
+Development
+Build feature, write tests, define data migration, configure
+feature flag
+Code review, automated tests, security review passed
+Staging
+End-to-end testing, offline testing, integration testing,
+performance testing
+All critical workflows pass in staging
+Internal release
+Enable for internal team and test accounts
+No critical defects; UX and support scripts validated
+Pilot release
+Enable for selected design partners and pilot tenants
+Pilot KPIs and support volume within thresholds
+Gradual rollout
+Increase tenant exposure in controlled cohorts
+Error rate, sync success, adoption, and financial integrity
+remain healthy
+General availability
+Enable for all eligible tenants
+Feature stable, documented, supported, and monitored
+Flag retirement
+Remove obsolete flag paths and document final behaviour
+No active rollout dependency remains
+12.1 Testing requirements
+  Unit tests for business rules, pricing, tax, stock, ledger, and permissions.
+ Integration tests for eTIMS, WhatsApp, payments, logistics, and partner APIs.
+ Offline tests covering sale, receipt, expense, stock issue, sync, duplicate prevention, and conflict handling.
+ Security tests for tenant isolation, privilege escalation, injection, IDOR, webhook spoofing, and data export.
+ Performance tests for high-volume POS, catalogue search, Parts Radar matching, and reporting.
+ User-acceptance testing with real cashiers, storekeepers, owners, mechanics, and riders.
+12.2 Training and support
+  Role-based onboarding: owner, cashier, storekeeper, sales agent, mechanic, and rider.
+ In-app guided setup, tooltips, offline troubleshooting, and sandbox training tenant.
+ Support ticketing, escalation matrix, response-time targets, and known-issue library.
+ Change communication before major releases, including feature explanations and training material.
+ Feedback capture from support tickets, failed searches, wrong-part reports, and feature requests.
+13. Definition of Done
+A feature is done only when it meets product, technical, security, operational, and commercial standards.
+  Feature workflow is complete for all affected roles and branches.
+ Offline workflow is tested and synchronises correctly.
+ Financial and inventory impacts reconcile with the ledger.
+ Permissions, tenant isolation, audit logging, and approval rules are enforced.
+ Notifications, reports, and error states are implemented.
+ Integrations have retry, monitoring, and reconciliation procedures.
+ Feature is documented, tested, support-ready, and measurable through KPIs.
+ Feature flag can be disabled without breaking core business operations.
+14. RACI and Governance
+Function
+Responsible
+Accountable
+Consulted
+Informed
+Product roadmap
+Product lead
+CEO / founder
+Commercial, operations,
+engineering
+All teams
+
+--- PAGE 22 ---
+Phased Implementation Roadmap v2.0
+Page 22
+Function
+Responsible
+Accountable
+Consulted
+Informed
+Architecture
+Lead engineer
+CTO / technical lead
+Security, data, AI, operations
+Product and commercial
+AI governance
+AI lead
+CTO / founder
+Legal, security, operations,
+commercial
+All teams
+Compliance
+Compliance lead
+CEO / founder
+Finance, tax advisor, engineering
+Operations and support
+Security
+Security lead
+CTO
+Engineering, operations, legal
+All teams
+Pilot operations
+Customer success
+COO / founder
+Sales, support, training
+Product and engineering
+Support
+Support lead
+COO
+Product, engineering, operations
+All teams
+15. Master Backlog and Future Enhancements
+The following capabilities should remain in the master backlog after the core phases are stable. They represent advanced
+improvement opportunities rather than launch blockers.
+  Advanced dynamic pricing with competitor signals, demand elasticity, and margin guardrails.
+ AI-powered visual part identification using part images, vehicle photos, and damaged-part diagnosis.
+ Predictive maintenance and service reminders based on vehicle mileage, service history, and part lifecycle.
+ Financing marketplace connecting retailers, riders, and verified lenders, with consent and risk controls.
+ Insurance integration for rider cover, goods-in-transit cover, and warranty protection.
+ Multi-country expansion with local tax, language, payment, logistics, and compliance adapters.
+ Open developer platform for approved third-party apps and data services.
+ Advanced sustainability tracking for packaging, returns, recycling, and end-of-life parts.
+ Voice-first workflows for low-literacy users and hands-free warehouse operations.
+ Advanced network intelligence for manufacturers: demand sensing, regional assortment planning, and quality-feedback
+loops.
+16. Final Delivery Directive
+Deliver the ecosystem as a sequence of trustworthy business capabilities. Begin with offline trading and financial control. Then
+build inventory intelligence, wholesale fulfilment, Parts Radar, governed AI, compliance, payments, and network commerce.
+Expand autonomy only after the platform has proven accuracy, security, reconciliation, and user trust.
+The roadmap’s ultimate measure is simple: a motorcycle-parts business should be able to operate faster, protect its money,
+find the right part, serve its customer, and grow with confidence—whether it is online or offline.
+
