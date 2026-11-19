@@ -65,3 +65,4 @@ supabase/.branches/
 *.swo
 .DS_Store
 Thumbs.db
+keys.txt

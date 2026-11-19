@@ -26,11 +26,11 @@ Supabase PostgreSQL
 - Business RPC calls are used for POS, inventory creation/costs, registration, and reporting; staff attribution is resolved server-side from `users.auth_user_id`.
 
 ## Frontend
-- Single React component controls page navigation without a router library.
-- Overview, POS, inventory, radar, finance, and dispatch sections are present in one page component.
-- Overview sales and chart values are frontend demo values.
-- POS products are static demo products and do not yet drive the backend checkout end-to-end.
-- No Supabase Auth client or login flow is present; backend now requires `Authorization: Bearer` on protected routes.
+- React Router provides guarded auth/tenant routes and lazy-loaded pages.
+- Supabase Auth handles sign-in, sign-up and recovery; AuthProvider coordinates in-flight authentication and verified local sign-out across route changes.
+- The API client reads the current bearer token, applies membership-derived tenant headers, bounds 401 refresh/replay and invalidates stale account/tenant responses.
+- Overview, POS item search and Parts Radar read API endpoints; unavailable metrics remain explicit. Checkout is disabled; Inventory/Finance/Dispatch workflow pages remain placeholders.
+- Local tests and intercepted browser scenarios verify client behavior only. Independent security re-review and live Supabase browser/RLS acceptance are outstanding (05).
 
 ## Database
 - 32 public base tables, 32 RLS-enabled tables, 73 public RLS policies, 30 public functions, 12 triggers, and 0 storage buckets were live-audited.

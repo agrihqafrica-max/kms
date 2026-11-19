@@ -24,7 +24,7 @@ Kenya Motorcycle Spare Parts & Supply Chain Ecosystem.
 - Routers: `routers/pos.py`, `inventory.py`, `finance.py`, `radar.py`, `organizations.py`.
 
 ## Development state
-Backend modules and a dashboard shell exist. The live database is extensively provisioned. User-facing data is largely not integrated, Auth sign-in is absent, and most PRD/test-suite workflows remain unimplemented or untested.
+Backend modules exist with historical AUTH-01 evidence. Frontend auth, tenant selection and read-only API views are implemented with local/fixture verification (HANDOVER/05); independent security re-review and live browser acceptance remain open. Most business workflows are still unimplemented or untested; Phase 0 is not closed.
 
-## Git limitation
-No `.git` directory was present at repository root. Current Git branch, history, and uncommitted diff could not be verified.
+## Git status
+Git was absent at the original audit but is now initialized; the frontend continuation is on `work/phase0-auth-bootstrap`. Publication is a review-pending feature-branch checkpoint, not a release (D-033).

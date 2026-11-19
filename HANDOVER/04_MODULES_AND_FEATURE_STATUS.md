@@ -1,5 +1,14 @@
 # 04 — Module and Feature Status
 
+## Current continuation — 2026-11-19 (supersedes frontend snapshot below)
+- Slice 1 auth/API bootstrap is IMPLEMENTED, REVIEW PENDING: sign-in/sign-up/reset/recovery, guarded routes, tenant selection, bounded refresh and provider-scoped authentication/sign-out coordination.
+- Overview, POS inventory search and Radar are API-connected read-only views; fixture browser verification is not live acceptance. Checkout is disabled. Organisation onboarding and Inventory/Finance/Dispatch workflow pages remain unavailable.
+- Latest evidence: 21 tests, clean lint/build, 18 fixture browser groups; independent security re-review unavailable (provider 403). TC-41–TC-46 remain PARTIAL and Phase 0 remains open; see 05.
+- The old ledger-exists statement below is superseded by C-014/D-020: no ledger was found in the recorded live audit. Foundation ADR-001/003 remain BLOCKED (D-032); no migration was applied.
+
+## Historical backend/module snapshot
+The entries below preserve the inherited audit, not current frontend completion claims. Current frontend status is above; database facts require renewed live verification before changes.
+
 ## Authentication and tenant context — AUTH-01 (implemented 2026-11-19)
 Status: IMPLEMENTED and verified by signed-JWT API tests (see 05/11).
 - JWT verification (JWKS ES256/RS256; HS256 only if explicitly configured), user-scoped transactions as `authenticated`, membership-based org/branch resolution with explicit header selection, server-side staff attribution, denial auditing, central sqlstate→HTTP mapping.

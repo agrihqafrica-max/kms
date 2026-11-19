@@ -1,7 +1,11 @@
 # 08 — Next Development Roadmap
 
 ## Immediate recommended task
-Implement and verify a real, user-scoped Supabase Auth/JWT database session for FastAPI. This is required before TC-04 and later tenant workflows can be safely implemented.
+Close the outstanding Slice 1 security/acceptance gates before calling it stable: obtain independent security re-review after the reviewer service is available, execute the uncovered ACs in HANDOVER/05 (including live browser/mail and visual/mobile checks), and record actual results. The frontend checkpoint has 21 passing local tests and 18 passing intercepted browser groups, not full acceptance. Phase 0 remains open.
+
+Next implementation after Slice 1 acceptance: organisation/staff onboarding (Slice 2), following the approved register and phase pipeline. Foundation ADR-001/003 remain BLOCKED under D-032; do not implement their drafts or apply migrations. Production/external-side-effect restrictions remain unchanged.
+
+The numbered roadmap below is historical. R-001/R-002 already have AUTH-01 API evidence; R-005 has client/fixture implementation evidence. Blueprint/Roadmap v2.0 and D-012–D-027 supersede legacy PIN, offline and M-Pesa sequencing; retain original TC IDs.
 
 ## R-001 — Auth session baseline
 Objective: establish authenticated API requests using Supabase JWT; set `auth.uid()` context safely for RLS.

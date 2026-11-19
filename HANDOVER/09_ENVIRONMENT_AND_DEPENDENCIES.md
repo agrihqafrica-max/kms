@@ -2,7 +2,9 @@
 
 ## Required environment variables
 - `DATABASE_URL`: Supabase PostgreSQL connection string used by SQLAlchemy and asyncpg utilities.
-- Future frontend variables should be namespaced for Supabase URL and public anonymous key only. Do not add service-role keys to frontend configuration.
+- Frontend requires `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_API_BASE_URL`; missing/unsafe values show a configuration error. Set values locally, never in source or handover. Do not add service-role keys to frontend configuration. `frontend/.env*` is ignored, including examples; do not force-add them.
+- Frontend uses Supabase JS v2 and React Router v7. Verify with `npm --prefix frontend test`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build`.
+- Browser fixtures must intercept requests before application modules load because the API client captures fetch at creation. Install the fixture through the browser navigation init script, then run `runBrowserChecks()`; installing it after load does not isolate API calls. The fixture is not a general network sandbox.
 
 ## Optional backend auth variables (AUTH-01)
 - `SUPABASE_URL`: project URL used to build the JWT issuer and JWKS endpoint. If unset, it is derived from the `DATABASE_URL` username (`postgres.<project-ref>` → `https://<project-ref>.supabase.co`).

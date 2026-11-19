@@ -1,7 +1,9 @@
 # 00 — Read First
 
 ## Current handover status
-This repository is a mixed FastAPI/React proof-of-implementation workspace. Supabase is live and contains 32 public base tables, RLS, policies, functions, and triggers. AUTH-01 (user-scoped Supabase authentication and FastAPI database sessions) was implemented and verified on 2026-11-19: full regression 44/44 passed. See 05/11 for evidence and 06 C-008 for committed test leftovers awaiting approved cleanup.
+Phase 0 remains IN PROGRESS; this is not a production-ready release. AUTH-01 backend retains historical 44/44 regression evidence. Slice 1 frontend auth/API bootstrap is implemented with session-race corrections: latest local verification is 21/21 tests, clean lint, successful build, and 18 intercepted browser scenario groups (2026-11-19). Independent security re-review could not start (provider 403); approval remains outstanding. Live Supabase browser/mail acceptance, visual/mobile QA, staging and hosted CI are not established. See 05 for exact evidence and 07/08 for remaining work.
+
+Git now exists on `work/phase0-auth-bootstrap`; publication is a review-pending checkpoint, not a merge or release. Respect `.gitignore`; never force-add environment files, keys, dependencies, build output or local session state. Blocked foundation drafts remain local. C-008 cleanup was approved and completed (06); no database changes were made in this frontend continuation. Original audit observations below are historical; D-033 records their current corrections.
 
 ## Mandatory startup order
 1. Read `AGENTS.md` at the project root.

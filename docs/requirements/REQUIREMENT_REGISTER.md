@@ -209,7 +209,7 @@ Naming rule: downstream specs must use these canonical names (BP §5 "one canoni
 
 ---
 
-## 7. Open questions log (present to product owner; register stays DRAFT until answered or explicitly deferred)
+## 7. Open questions log (ALL RESOLVED 2026-11-19 as D-012…D-027 under delegation D-011 — see §11; original questions preserved below)
 
 | ID | Question | Who must answer | Blocking? | Blocks |
 |----|----------|-----------------|-----------|--------|

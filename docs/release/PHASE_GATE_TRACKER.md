@@ -29,7 +29,7 @@ Status: **IN PROGRESS** (backend foundation verified; closure tasks in pipeline)
 - [ ] Monitoring/logging/tracing/alerting dashboards (error, latency, queue, sync lag)
 - [ ] Backup/restore procedures tested
 - [ ] Admin console (tenant management, support, integration health)
-Gate decision: PENDING — evidence: HANDOVER/05, 11; decisions D-008–D-011.
+Gate decision: PENDING — evidence: HANDOVER/05, 11; decisions D-008–D-011, D-028–D-033. Slice 1 frontend implementation has 21 passing tests, clean lint/build, and 18 intercepted browser groups; independent security re-review could not start (provider 403), and live/visual acceptance remains incomplete. Publish only a review-pending feature-branch checkpoint; no stable release, merge or production deployment. Foundation ADR-001/003 remain BLOCKED.
 Gate authority: release-manager (delegated, D-011).
 
 ## Phase 1 — Counter-First POS and Offline Trading
@@ -88,3 +88,4 @@ development → staging → internal release → pilot tenants (stable cohorts) 
 |------|-------|----------|----------|----------|
 | 2026-11-19 | 0 (partial) | Backend foundation verified; purge approved; roadmap-driven continuation approved (D-008–D-010) | HANDOVER/05, 06, 11; 44/44 regression | Product owner (chat) |
 | 2026-11-19 | all | Gate/implementation approval delegated to release-manager for autonomous delivery; external-side-effect hard limits retained (D-011) | HANDOVER/06 D-011; AGENT_OPERATING_RULES.md §4 | Product owner (chat) |
+| 2026-11-19 | 0 (partial) | REQ-009 baseline: git repo initialised (commits 0dcec68, 27df8d4; secrets verified excluded), CI workflow authored (needs repo secret DATABASE_URL + remote before it can run), requirements.txt pinned, ops runbook skeleton. Frontend build+lint PASS; 44 tests collect. Staging still absent — gate item remains open. | git log; .github/workflows/ci.yml; docs/ops/RUNBOOK.md | Release-manager (D-011) |

@@ -1,5 +1,16 @@
 # 07 — Known Issues and Pending Work
 
+## Current blockers — 2026-11-19 (supersedes resolved frontend gaps below)
+1. Mandatory independent security re-review is NOT APPROVED: the latest reviewer failed to start with provider 403. The two latest auth-race corrections have local regression evidence, not independent closure. Keep the slice and release gate open.
+2. TC-41–TC-46 remain PARTIAL. Live Supabase/browser isolation, controlled-mailbox recovery, visual/mobile/accessibility and performance acceptance are incomplete (05 contains the AC matrix).
+3. Auth forms, React Router, configured API client and read-only Overview/POS/Radar views now exist. Organisation onboarding, cart/checkout, offline trading and remaining workflow pages are still missing; never demonstrate them as complete.
+4. Foundation ADR-001/003 remain BLOCKED under D-032; offline encryption is BLOCKED under D-028. No foundation migration is authorized by this checkpoint.
+5. CI configuration exists, but hosted CI/staging are unverified and frontend unit tests are not in its job. No production action is authorized. A provider request that never settles keeps authentication/sign-out gated; do not force-enable another account.
+6. Publish only the review-pending feature branch and allowed files. Keep ignored files and blocked foundation drafts local; leave remote main unchanged.
+
+## Historical issue snapshot
+The list below preserves the inherited issues. Resolved frontend/no-Git/no-CI statements are superseded by the current blockers above and D-033; old database observations are not fresh evidence.
+
 ## Critical
 1. ~~No actual Supabase Auth sign-in/JWT propagation exists in FastAPI or frontend.~~ Backend JWT verification and user-scoped sessions implemented 2026-11-19 (AUTH-01); frontend sign-in flow still missing.
 2. ~~Direct database connection can undermine RLS if user identity is not set on the session.~~ Resolved for protected routes: every request runs as `authenticated` with transaction-local JWT claims (see 03). `/health/db` still uses the unscoped `get_db` (read-only health check).

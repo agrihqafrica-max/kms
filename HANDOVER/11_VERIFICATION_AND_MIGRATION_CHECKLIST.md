@@ -6,7 +6,7 @@
 - [x] Run `python -m pytest -q tests/test_tc01.py tests/test_tc01_api.py`. (6 passed, 2026-11-19 regression)
 - [x] Run `python -m pytest -q tests/test_tc02.py`. (6 passed, 2026-11-19 regression)
 - [x] Run `python -m pytest -q tests/test_tc03.py`. (4 passed, 2026-11-19 regression)
-- [ ] Run `npm --prefix frontend run build`. (not re-run during AUTH-01; no frontend changes)
+- [x] Run `npm --prefix frontend run build`. (2026-11-19 Slice 1 continuation: Vite 8.3.8 build passed; 21 frontend tests passed, lint 0 warnings/errors; 18 fixture browser groups passed. Independent security and live acceptance remain open; see 05.)
 - [ ] Run backend health endpoint. (not re-run during AUTH-01; handler detail made generic)
 - [x] Run read-only Supabase table, RLS, policy, trigger, and function metadata queries. (grants, policies, triggers, RPC definitions re-verified 2026-11-19)
 
