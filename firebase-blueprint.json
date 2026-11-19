@@ -1,0 +1,500 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Public-safe workspace profile and active tenant preferences for an authenticated user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "activeOrganizationId": { "type": "string", "maxLength": 128 },
+        "activeBranchId": { "type": "string", "maxLength": 128 },
+        "complianceMode": { "type": "string", "enum": ["simplified", "etims_vat"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "complianceMode", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII record for an authenticated user.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 255 },
+        "photoURL": { "type": "string", "maxLength": 512 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "email", "updatedAt"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Branch spare-part SKU record with Parts Master, fitment, UoM, bin, and reservation depth.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "partName": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "partNumber": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 100 },
+        "compatibleModels": { "type": "string", "maxLength": 500 },
+        "brand": { "type": "string", "maxLength": 100 },
+        "barcode": { "type": "string", "maxLength": 100 },
+        "qualityGrade": { "type": "string", "enum": ["OEM", "Genuine", "Aftermarket_A", "Aftermarket_B"] },
+        "uom": { "type": "string", "enum": ["Piece", "Set", "Pair", "Box", "Carton"] },
+        "packSize": { "type": "integer" },
+        "binLocation": { "type": "string", "maxLength": 60 },
+        "reservedQuantity": { "type": "integer" },
+        "oemCrossRefs": { "type": "string", "maxLength": 300 },
+        "fitmentConfidence": { "type": "string", "enum": ["verified_fit", "likely_fit", "requires_confirmation"] },
+        "unitCost": { "type": "number" },
+        "retailPrice": { "type": "number" },
+        "stockQuantity": { "type": "integer" },
+        "reorderLevel": { "type": "integer" },
+        "velocityClass": { "type": "string", "enum": ["fast", "normal", "slow", "dead"] },
+        "blindListed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "partName", "partNumber", "unitCost", "retailPrice", "stockQuantity", "reorderLevel", "createdAt", "updatedAt"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Immutable signed stock movement ledger record.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "itemId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "partNumber": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "movementType": { "type": "string", "enum": ["sale", "receipt", "adjustment", "transfer_out", "transfer_in", "return", "count_variance", "damage", "pack_break", "purchase_return"] },
+        "quantityDelta": { "type": "integer" },
+        "reason": { "type": "string", "maxLength": 300 },
+        "lotNumber": { "type": "string", "maxLength": 80 },
+        "unitCostSnapshot": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "itemId", "partNumber", "movementType", "quantityDelta", "createdAt"]
+    },
+    "PurchaseOrder": {
+      "title": "PurchaseOrder",
+      "description": "Supplier procurement order, partial GRN discrepancy, and landed cost allocation.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "supplierName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "orderNumber": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "itemsSummary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "orderedQty": { "type": "integer" },
+        "receivedQty": { "type": "integer" },
+        "damagedQty": { "type": "integer" },
+        "lotNumber": { "type": "string", "maxLength": 80 },
+        "grnNotes": { "type": "string", "maxLength": 400 },
+        "freightCost": { "type": "number" },
+        "customsCost": { "type": "number" },
+        "handlingCost": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "landedCost": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "PartiallyReceived", "Received", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "supplierName", "orderNumber", "itemsSummary", "totalCost", "landedCost", "status", "createdAt", "updatedAt"]
+    },
+    "StockCount": {
+      "title": "StockCount",
+      "description": "Cycle count variance proposal awaiting manager approval before ledger adjustment.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "itemId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "partNumber": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "partName": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "systemQty": { "type": "integer" },
+        "countedQty": { "type": "integer" },
+        "variance": { "type": "integer" },
+        "unitCost": { "type": "number" },
+        "reason": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["PendingApproval", "Approved", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "itemId", "partNumber", "partName", "systemQty", "countedQty", "variance", "unitCost", "status", "createdAt", "updatedAt"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Supplier profile and reliability scorecard.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "supplierName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "area": { "type": "string", "maxLength": 150 },
+        "leadTimeDays": { "type": "integer" },
+        "paymentTerms": { "type": "string", "maxLength": 80 },
+        "fillRatePct": { "type": "number" },
+        "defectRatePct": { "type": "number" },
+        "status": { "type": "string", "enum": ["Verified", "Probation", "Suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "supplierName", "leadTimeDays", "fillRatePct", "defectRatePct", "status", "createdAt", "updatedAt"]
+    },
+    "SalesOrder": {
+      "title": "SalesOrder",
+      "description": "Immutable counter POS or wholesale sale record.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "mobile_money_reference", "bank_reference", "card_reference", "credit"] },
+        "paymentReference": { "type": "string", "maxLength": 120 },
+        "customerName": { "type": "string", "maxLength": 200 },
+        "itemCount": { "type": "integer" },
+        "etimsStatus": { "type": "string", "enum": ["NotRequired", "Queued", "Accepted"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "subtotal", "discountAmount", "vatAmount", "totalAmount", "paymentMethod", "itemCount", "etimsStatus", "createdAt"]
+    },
+    "DailyExpense": {
+      "title": "DailyExpense",
+      "description": "Shop operating expense entry.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "amount": { "type": "number" },
+        "description": { "type": "string", "maxLength": 400 },
+        "expenseDate": { "type": "string", "minLength": 10, "maxLength": 10 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "category", "amount", "expenseDate", "createdAt"]
+    },
+    "BranchTransfer": {
+      "title": "BranchTransfer",
+      "description": "Inter-branch stock transfer and rider dispatch lifecycle.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sourceBranchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "destinationBranchName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "partSummary": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "quantity": { "type": "integer" },
+        "riderName": { "type": "string", "maxLength": 120 },
+        "plateNumber": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Dispatched", "Received", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "sourceBranchId", "destinationBranchName", "partSummary", "quantity", "status", "createdAt", "updatedAt"]
+    },
+    "CreditAccount": {
+      "title": "CreditAccount",
+      "description": "Wholesale buyer credit limit, balance, and churn tracking.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "creditLimit": { "type": "number" },
+        "outstandingBalance": { "type": "number" },
+        "lastOrderDaysAgo": { "type": "integer" },
+        "churnRisk": { "type": "string", "enum": ["Low", "Medium", "High"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "customerName", "creditLimit", "outstandingBalance", "lastOrderDaysAgo", "churnRisk", "createdAt", "updatedAt"]
+    },
+    "RadarRequest": {
+      "title": "RadarRequest",
+      "description": "Parts Radar reverse-search request.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "partDescription": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "motorcycleModel": { "type": "string", "maxLength": 150 },
+        "urgencyStatus": { "type": "string", "enum": ["Urgent", "Normal"] },
+        "locationArea": { "type": "string", "maxLength": 150 },
+        "quotedPrice": { "type": "number" },
+        "quotedSupplierArea": { "type": "string", "maxLength": 150 },
+        "fitConfidence": { "type": "string", "enum": ["verified_fit", "likely_fit", "requires_confirmation"] },
+        "reservationExpiresAt": { "type": "string", "maxLength": 40 },
+        "disputeStatus": { "type": "string", "enum": ["None", "Open", "Resolved"] },
+        "status": { "type": "string", "enum": ["Open", "Pending", "Reserved", "Resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "partDescription", "urgencyStatus", "status", "createdAt", "updatedAt"]
+    },
+    "EtimsInvoice": {
+      "title": "EtimsInvoice",
+      "description": "KRA eTIMS VSCU electronic tax invoice queue record.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "saleId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "invoiceNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "totalAmount": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "cuin": { "type": "string", "maxLength": 120 },
+        "status": { "type": "string", "enum": ["Queued", "Submitted", "Accepted", "Failed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "saleId", "invoiceNumber", "totalAmount", "vatAmount", "status", "createdAt", "updatedAt"]
+    },
+    "PayoutBatch": {
+      "title": "PayoutBatch",
+      "description": "Owner-approved payout batch for staff, riders, or suppliers.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Payroll", "RiderSettlement", "ReferralCommission", "SupplierPayable"] },
+        "recipientCount": { "type": "integer" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["PendingApproval", "Approved", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "title", "category", "recipientCount", "totalAmount", "status", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable operational and AI decision audit trail.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actionType": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "module": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "branchId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "actionType", "module", "summary", "createdAt"]
+    },
+    "ChatThread": {
+      "title": "ChatThread",
+      "description": "Gemini AI co-pilot conversation thread.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "rolePreset": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "modelMode": { "type": "string", "enum": ["fast", "standard", "search", "maps"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "title", "rolePreset", "modelMode", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Single message inside a Gemini AI co-pilot thread.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "text": { "type": "string", "minLength": 1, "maxLength": 16000 },
+        "model": { "type": "string", "maxLength": 80 },
+        "mode": { "type": "string", "maxLength": 40 },
+        "linksJson": { "type": "string", "maxLength": 8000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "role", "text", "createdAt"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Immutable balanced double-entry accounting journal entry.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "entryNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "entryType": { "type": "string", "enum": ["sale", "expense", "return_reversal", "grn_receipt", "count_variance", "manual_reversal", "purchase_return"] },
+        "sourceId": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "debitAccount": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "creditAccount": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "totalDebit": { "type": "number" },
+        "totalCredit": { "type": "number" },
+        "linesJson": { "type": "string", "maxLength": 8000 },
+        "reversesEntryId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["Posted"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "entryNumber", "entryType", "description", "debitAccount", "creditAccount", "totalDebit", "totalCredit", "status", "createdAt"]
+    },
+    "CustomerProfile": {
+      "title": "CustomerProfile",
+      "description": "Shop customer/rider identity, bike model, and channel consent preferences.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "bikeModel": { "type": "string", "maxLength": 120 },
+        "consentWhatsApp": { "type": "boolean" },
+        "consentSms": { "type": "boolean" },
+        "consentMarketing": { "type": "boolean" },
+        "totalSpent": { "type": "number" },
+        "visitCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "fullName", "consentWhatsApp", "consentSms", "consentMarketing", "createdAt", "updatedAt"]
+    },
+    "SalesReturn": {
+      "title": "SalesReturn",
+      "description": "POS customer return, stock reversal, and manager-approved refund workflow.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "saleId": { "type": "string", "maxLength": 128 },
+        "itemId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "partNumber": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "quantity": { "type": "integer" },
+        "refundAmount": { "type": "number" },
+        "refundMethod": { "type": "string", "enum": ["cash", "mobile_money_reference", "credit_note"] },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "status": { "type": "string", "enum": ["PendingApproval", "Approved", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "itemId", "partNumber", "quantity", "refundAmount", "refundMethod", "reason", "status", "createdAt", "updatedAt"]
+    },
+    "DrawerShift": {
+      "title": "DrawerShift",
+      "description": "Cash drawer shift session with opening float, closing cash count, and variance.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "shiftDay": { "type": "string", "minLength": 10, "maxLength": 10 },
+        "openingFloat": { "type": "number" },
+        "expectedCash": { "type": "number" },
+        "countedCash": { "type": "number" },
+        "variance": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["Open", "Closed", "Approved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "shiftDay", "openingFloat", "status", "createdAt", "updatedAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "Centralized multi-channel notification queue with consent and suppression tracking.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "maxLength": 128 },
+        "templateKey": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "channel": { "type": "string", "enum": ["in_app", "whatsapp", "sms", "email"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "status": { "type": "string", "enum": ["Unread", "Read", "Suppressed", "Queued"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "templateKey", "channel", "title", "body", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Authenticated user workspace profile."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "PII-isolated profile fields (email, photoURL)."
+    },
+    "/users/{userId}/inventory/{itemId}": {
+      "schema": { "$ref": "#/entities/InventoryItem" },
+      "description": "Branch spare-parts inventory items."
+    },
+    "/users/{userId}/stockMovements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Immutable stock movement audit log."
+    },
+    "/users/{userId}/purchaseOrders/{poId}": {
+      "schema": { "$ref": "#/entities/PurchaseOrder" },
+      "description": "Supplier purchase orders and goods receipts."
+    },
+    "/users/{userId}/stockCounts/{countId}": {
+      "schema": { "$ref": "#/entities/StockCount" },
+      "description": "Cycle count variance proposals awaiting approval."
+    },
+    "/users/{userId}/suppliers/{supplierId}": {
+      "schema": { "$ref": "#/entities/Supplier" },
+      "description": "Supplier registry and performance scorecard."
+    },
+    "/users/{userId}/sales/{saleId}": {
+      "schema": { "$ref": "#/entities/SalesOrder" },
+      "description": "Immutable POS and wholesale sales orders."
+    },
+    "/users/{userId}/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/DailyExpense" },
+      "description": "Daily shop expenses."
+    },
+    "/users/{userId}/transfers/{transferId}": {
+      "schema": { "$ref": "#/entities/BranchTransfer" },
+      "description": "Inter-branch stock transfers and rider dispatches."
+    },
+    "/users/{userId}/creditAccounts/{accountId}": {
+      "schema": { "$ref": "#/entities/CreditAccount" },
+      "description": "Wholesale credit accounts and churn risk metrics."
+    },
+    "/users/{userId}/radarRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/RadarRequest" },
+      "description": "Parts Radar reverse-search sourcing requests."
+    },
+    "/users/{userId}/etimsInvoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/EtimsInvoice" },
+      "description": "KRA eTIMS electronic invoice submission queue."
+    },
+    "/users/{userId}/payoutBatches/{batchId}": {
+      "schema": { "$ref": "#/entities/PayoutBatch" },
+      "description": "Owner-approved payout batches."
+    },
+    "/users/{userId}/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable security and operational audit trail."
+    },
+    "/users/{userId}/chatThreads/{threadId}": {
+      "schema": { "$ref": "#/entities/ChatThread" },
+      "description": "Gemini AI co-pilot chat threads."
+    },
+    "/users/{userId}/chatThreads/{threadId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Multi-turn chat messages within a thread."
+    },
+    "/users/{userId}/journalEntries/{entryId}": {
+      "schema": { "$ref": "#/entities/JournalEntry" },
+      "description": "Immutable double-entry accounting ledger."
+    },
+    "/users/{userId}/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/CustomerProfile" },
+      "description": "Shop customer profiles and communication consent."
+    },
+    "/users/{userId}/salesReturns/{returnId}": {
+      "schema": { "$ref": "#/entities/SalesReturn" },
+      "description": "POS customer return and refund approval records."
+    },
+    "/users/{userId}/drawerShifts/{shiftId}": {
+      "schema": { "$ref": "#/entities/DrawerShift" },
+      "description": "Cash drawer open/close and variance reconciliation records."
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "In-app and channel-queued alerts with opt-out enforcement."
+    }
+  }
+}

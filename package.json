@@ -1,0 +1,24 @@
+{
+  "name": "kms",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm run build:frontend && node server.js",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build": "npm run build --workspace=frontend",
+    "lint": "npm run lint --workspace=frontend",
+    "test": "npm run test --workspace=frontend",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@firebase/eslint-plugin-security-rules": "^0.0.2",
+    "@google/genai": "^3.6.1",
+    "eslint": "^10.15.0",
+    "express": "^5.1.0",
+    "firebase": "^13.4.0"
+  }
+}

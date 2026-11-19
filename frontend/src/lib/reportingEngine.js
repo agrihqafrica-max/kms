@@ -1,0 +1,169 @@
+import { computeAvailableStock } from './kmsDomain.js'
+
+function round2(n) {
+  return Math.round(Number(n || 0) * 100) / 100
+}
+
+export function buildDailyBusinessSummary({
+  sales = [],
+  expenses = [],
+  salesReturns = [],
+  etimsInvoices = [],
+  journalEntries = [],
+  branchId = null,
+}) {
+  const bSales = branchId ? sales.filter(s => s.branchId === branchId) : sales
+  const bExpenses = branchId ? expenses.filter(e => e.branchId === branchId) : expenses
+  const bReturns = branchId ? salesReturns.filter(r => r.branchId === branchId && r.status === 'Approved') : salesReturns
+  const bJournals = branchId ? journalEntries.filter(j => j.branchId === branchId) : journalEntries
+
+  const grossSales = round2(bSales.reduce((s, row) => s + Number(row.totalAmount || 0), 0))
+  const totalDiscounts = round2(bSales.reduce((s, row) => s + Number(row.discountAmount || 0), 0))
+  const totalVat = round2(bSales.reduce((s, row) => s + Number(row.vatAmount || 0), 0))
+  const totalRefunds = round2(bReturns.reduce((s, row) => s + Number(row.refundAmount || 0), 0))
+  const netSales = round2(grossSales - totalRefunds)
+  const totalExpenses = round2(bExpenses.reduce((s, row) => s + Number(row.amount || 0), 0))
+  const netOperatingCashFlow = round2(netSales - totalExpenses)
+
+  const etimsAccepted = etimsInvoices.filter(i => i.status === 'Accepted').length
+  const etimsPending = etimsInvoices.filter(i => i.status !== 'Accepted').length
+
+  return {
+    transactionCount: bSales.length,
+    grossSales,
+    totalDiscounts,
+    totalVat,
+    totalRefunds,
+    netSales,
+    totalExpenses,
+    netOperatingCashFlow,
+    journalEntryCount: bJournals.length,
+    etimsAccepted,
+    etimsPending,
+  }
+}
+
+export function buildSalesReport({ sales = [], salesReturns = [], branchId = null }) {
+  const bSales = branchId ? sales.filter(s => s.branchId === branchId) : sales
+  const bReturns = branchId ? salesReturns.filter(r => r.branchId === branchId && r.status === 'Approved') : salesReturns
+
+  const byMethod = {}
+  for (const s of bSales) {
+    const method = s.paymentMethod || 'cash'
+    if (!byMethod[method]) byMethod[method] = { method, count: 0, total: 0 }
+    byMethod[method].count += 1
+    byMethod[method].total = round2(byMethod[method].total + Number(s.totalAmount || 0))
+  }
+
+  return {
+    rows: bSales,
+    returns: bReturns,
+    byPaymentMethod: Object.values(byMethod),
+    grossTotal: round2(bSales.reduce((acc, s) => acc + Number(s.totalAmount || 0), 0)),
+    returnsTotal: round2(bReturns.reduce((acc, r) => acc + Number(r.refundAmount || 0), 0)),
+  }
+}
+
+export function buildProfitCogsReport({ sales = [], expenses = [], stockMovements = [], inventory = [], branchId = null }) {
+  const bSales = branchId ? sales.filter(s => s.branchId === branchId) : sales
+  const bExpenses = branchId ? expenses.filter(e => e.branchId === branchId) : expenses
+  const bMovements = branchId ? stockMovements.filter(m => m.branchId === branchId) : stockMovements
+
+  const costByItemId = new Map(inventory.map(i => [i.id, Number(i.unitCost || 0)]))
+  const cogs = round2(
+    bMovements
+      .filter(m => m.movementType === 'sale')
+      .reduce((sum, m) => {
+        const unitsSold = Math.abs(Number(m.quantityDelta || 0))
+        const unitCost = Number(m.unitCostSnapshot ?? costByItemId.get(m.itemId) ?? 0)
+        return sum + unitsSold * unitCost
+      }, 0),
+  )
+
+  const netRevenueExVat = round2(
+    bSales.reduce((sum, s) => sum + (Number(s.totalAmount || 0) - Number(s.vatAmount || 0)), 0),
+  )
+  const grossProfit = round2(netRevenueExVat - cogs)
+  const operatingExpenses = round2(bExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0))
+  const netProfit = round2(grossProfit - operatingExpenses)
+  const grossMarginPct = netRevenueExVat > 0 ? Math.round((grossProfit / netRevenueExVat) * 1000) / 10 : 0
+
+  return {
+    netRevenueExVat,
+    cogs,
+    grossProfit,
+    grossMarginPct,
+    operatingExpenses,
+    netProfit,
+  }
+}
+
+export function buildCashReconciliationReport({ drawerShifts = [], branchId = null }) {
+  const bShifts = branchId ? drawerShifts.filter(sh => sh.branchId === branchId) : drawerShifts
+  const totalVariance = round2(bShifts.reduce((sum, sh) => sum + Number(sh.variance || 0), 0))
+  return {
+    shifts: bShifts,
+    openCount: bShifts.filter(s => s.status === 'Open').length,
+    closedCount: bShifts.filter(s => s.status !== 'Open').length,
+    totalVariance,
+  }
+}
+
+export function buildStockReport({ inventory = [], branchId = null }) {
+  const bItems = branchId ? inventory.filter(i => i.branchId === branchId) : inventory
+  return bItems.map(item => {
+    const view = computeAvailableStock(item)
+    return {
+      partNumber: item.partNumber,
+      partName: item.partName,
+      binLocation: item.binLocation || 'UNASSIGNED',
+      onHand: view.onHand,
+      reserved: view.reserved,
+      available: view.available,
+      costValue: round2(view.onHand * Number(item.unitCost || 0)),
+      retailValue: round2(view.onHand * Number(item.retailPrice || 0)),
+    }
+  })
+}
+
+export function buildPurchaseReport({ purchaseOrders = [], suppliers = [], branchId = null }) {
+  const bPOs = branchId ? purchaseOrders.filter(p => p.branchId === branchId) : purchaseOrders
+  const totalBaseCost = round2(bPOs.reduce((s, p) => s + Number(p.totalCost || 0), 0))
+  const totalLandedCost = round2(bPOs.reduce((s, p) => s + Number(p.landedCost || 0), 0))
+  const freightOverheadPct =
+    totalBaseCost > 0 ? Math.round(((totalLandedCost - totalBaseCost) / totalBaseCost) * 1000) / 10 : 0
+
+  return {
+    orderCount: bPOs.length,
+    receivedCount: bPOs.filter(p => p.status === 'Received').length,
+    totalBaseCost,
+    totalLandedCost,
+    freightOverheadPct,
+    activeSuppliers: suppliers.length,
+  }
+}
+
+export function buildPlatformHealthReport({ outbox = [], etimsInvoices = [], notifications = [], journalEntries = [], auditLogs = [] }) {
+  const balancedCount = journalEntries.filter(
+    j => Math.abs(Number(j.totalDebit || 0) - Number(j.totalCredit || 0)) <= 0.005,
+  ).length
+  return {
+    offlineOutboxPending: outbox.length,
+    etimsFailedOrQueued: etimsInvoices.filter(i => i.status !== 'Accepted').length,
+    suppressedNotifications: notifications.filter(n => n.status === 'Suppressed').length,
+    unreadNotifications: notifications.filter(n => n.status === 'Unread').length,
+    balancedJournalRatio: journalEntries.length > 0 ? `${balancedCount}/${journalEntries.length}` : '0/0',
+    auditEventCount: auditLogs.length,
+  }
+}
+
+function csvCell(val) {
+  const s = String(val ?? '')
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+export function exportReportToCsv(columns = [], rows = []) {
+  const headerLine = columns.map(csvCell).join(',')
+  const dataLines = rows.map(row => row.map(csvCell).join(','))
+  return [headerLine, ...dataLines].join('\n')
+}

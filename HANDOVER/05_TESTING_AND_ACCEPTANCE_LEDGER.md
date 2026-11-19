@@ -198,3 +198,19 @@ Authority: `E:/MotorCycle/kms-main/docs/specs/SLICE-01-auth-bootstrap/SPEC.md` �
 - The mandatory independent `code-security-reviewer` could not start: **provider 403**. Earlier BLOCK findings have implementation/regression corrections but **independent re-review remains NOT APPROVED**. Do not merge or label the slice stable, accepted or release-ready.
 - Publication is a **review-pending feature-branch checkpoint only**, under the user's GitHub push request. Main and production are not changed. Phase 0 stays IN PROGRESS; TC-01–TC-40 are unchanged; TC-41–TC-46 remain PARTIAL. The known-value scan supplies partial AC-2.5 evidence, not full certification; the remaining coverage matrix and live/visual/CI/staging gaps still apply.
 - No backend/schema/migration change, database cleanup, real payment, eTIMS submission, live mail or production deployment was performed in this closeout. Next: independent re-review plus uncovered acceptance evidence, then gate decision.
+
+---
+
+## Phase 2 — Inventory, Procurement & SaaS Overhaul Verification (2026-11-19)
+
+Historical `TC-01`–`TC-40` and `TC-41`–`TC-46` rows above remain untouched. The checks below verify the Phase 2 Firebase/Firestore frontend and security rules implementation; Supabase/Postgres backend tests and live interactive Google OAuth popup login were **not** executed in this environment.
+
+| Check ID | Scope | Command / Method | Outcome & Evidence |
+|---|---|---|---|
+| P2-RULES-LINT | Firestore rules syntax & security linter | `npx eslint firestore.rules` | **PASS** — 0 warnings, 0 errors. |
+| P2-RULES-TEST | Owner isolation, Phase 2 status constraints (`PartiallyReceived`, `PendingApproval`, immutable `stockMovements`/`auditLogs`) | `npx --yes tsx --test firestore.rules.test.ts` | **PASS** — 4/4 tests passing against local Firestore rules evaluator. |
+| P2-RULES-DEPLOY | Cloud Firestore security rules deployment | `DeployRules` RPC to `gen-lang-client-0411462713` (`ai-studio-kms-163f3f6d-1c1d-4fb4-af5a-0104916ad335`) | **PASS** — Deployed cleanly (`{}`). |
+| P2-UNIT-DOMAIN | `computeAvailableStock`, `buildReorderRecommendations`, `computeGrnSettlement`, `computeStockHealthSummary`, `evaluateSupplierScore`, `buildInventoryValuationCsv`, Phase 1/3/4/5 helpers | `npm test --workspace=frontend` (`node --test tests/*.test.js`) | **PASS** — 35/35 passing, 0 failed, 0 skipped. |
+| P2-LINT-BUILD | Workspace JS/JSX lint & Vite production bundle | `oxlint` (`lint_applet`) + `vite build` (`compile_applet`) | **PASS** — 0 warnings / 0 errors across 48 files; Vite build succeeded. |
+| P2-BROWSER-UI | Headless Chromium verification (`playwright-cli`) at `1440x900` desktop & `390x844` mobile in `Local preview` session | `playwright-cli` on `http://localhost:3000` (`/signin`, `/app/overview`, all 5 `/app/inventory` tabs, PO approval + inline GRN form, Cycle Count approval updating KPIs, mobile overflow fix) | **PASS** — 0 console errors; desktop `h1` `18px`, topbar `66px`; Round 2 confirmed `390px` mobile `scrollWidth === 390` (`0px` horizontal overflow) and `54px` mobile bottom bar. |
+

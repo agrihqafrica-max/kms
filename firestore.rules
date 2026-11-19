@@ -1,0 +1,753 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function userExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function isValidUserAccount(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'complianceMode', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'activeOrganizationId', 'activeBranchId', 'complianceMode', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.complianceMode in ['simplified', 'etims_vat']
+        && (!('activeOrganizationId' in data) || (data.activeOrganizationId is string && data.activeOrganizationId.size() <= 128))
+        && (!('activeBranchId' in data) || (data.activeBranchId is string && data.activeBranchId.size() <= 128))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateInfo(data, userId) {
+      return data.keys().hasAll(['ownerId', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'email', 'photoURL', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.email is string && data.email.size() <= 255
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 512))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInventoryItem(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'partName', 'partNumber', 'unitCost', 'retailPrice', 'stockQuantity', 'reorderLevel', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'branchId', 'partName', 'partNumber', 'category', 'compatibleModels',
+          'brand', 'barcode', 'qualityGrade', 'uom', 'packSize', 'binLocation', 'reservedQuantity',
+          'oemCrossRefs', 'fitmentConfidence',
+          'unitCost', 'retailPrice', 'stockQuantity', 'reorderLevel', 'velocityClass', 'blindListed',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.partName is string && data.partName.size() >= 1 && data.partName.size() <= 255
+        && data.partNumber is string && data.partNumber.size() >= 1 && data.partNumber.size() <= 100
+        && (!('category' in data) || (data.category is string && data.category.size() <= 100))
+        && (!('compatibleModels' in data) || (data.compatibleModels is string && data.compatibleModels.size() <= 500))
+        && (!('brand' in data) || (data.brand is string && data.brand.size() <= 100))
+        && (!('barcode' in data) || (data.barcode is string && data.barcode.size() <= 100))
+        && (!('qualityGrade' in data) || data.qualityGrade in ['OEM', 'Genuine', 'Aftermarket_A', 'Aftermarket_B'])
+        && (!('uom' in data) || data.uom in ['Piece', 'Set', 'Pair', 'Box', 'Carton'])
+        && (!('packSize' in data) || (data.packSize is int && data.packSize >= 1))
+        && (!('binLocation' in data) || (data.binLocation is string && data.binLocation.size() <= 60))
+        && (!('reservedQuantity' in data) || (data.reservedQuantity is int && data.reservedQuantity >= 0))
+        && (!('oemCrossRefs' in data) || (data.oemCrossRefs is string && data.oemCrossRefs.size() <= 300))
+        && (!('fitmentConfidence' in data) || data.fitmentConfidence in ['verified_fit', 'likely_fit', 'requires_confirmation'])
+        && data.unitCost is number && data.unitCost >= 0
+        && data.retailPrice is number && data.retailPrice > 0
+        && data.stockQuantity is int && data.stockQuantity >= 0
+        && data.reorderLevel is int && data.reorderLevel >= 0
+        && (!('velocityClass' in data) || data.velocityClass in ['fast', 'normal', 'slow', 'dead'])
+        && (!('blindListed' in data) || data.blindListed is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStockMovement(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'itemId', 'partNumber', 'movementType', 'quantityDelta', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'itemId', 'partNumber', 'movementType', 'quantityDelta', 'reason', 'lotNumber', 'unitCostSnapshot', 'createdAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.itemId is string && data.itemId.size() >= 1 && data.itemId.size() <= 128
+        && data.partNumber is string && data.partNumber.size() >= 1 && data.partNumber.size() <= 100
+        && data.movementType in ['sale', 'receipt', 'adjustment', 'transfer_out', 'transfer_in', 'return', 'count_variance', 'damage', 'pack_break', 'purchase_return']
+        && data.quantityDelta is int
+        && (!('reason' in data) || (data.reason is string && data.reason.size() <= 300))
+        && (!('lotNumber' in data) || (data.lotNumber is string && data.lotNumber.size() <= 80))
+        && (!('unitCostSnapshot' in data) || (data.unitCostSnapshot is number && data.unitCostSnapshot >= 0))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPurchaseOrder(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'supplierName', 'orderNumber', 'itemsSummary', 'totalCost', 'landedCost', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'branchId', 'supplierName', 'orderNumber', 'itemsSummary',
+          'orderedQty', 'receivedQty', 'damagedQty', 'lotNumber', 'grnNotes',
+          'freightCost', 'customsCost', 'handlingCost',
+          'totalCost', 'landedCost', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.supplierName is string && data.supplierName.size() >= 1 && data.supplierName.size() <= 200
+        && data.orderNumber is string && data.orderNumber.size() >= 1 && data.orderNumber.size() <= 100
+        && data.itemsSummary is string && data.itemsSummary.size() >= 1 && data.itemsSummary.size() <= 500
+        && (!('orderedQty' in data) || (data.orderedQty is int && data.orderedQty >= 1))
+        && (!('receivedQty' in data) || (data.receivedQty is int && data.receivedQty >= 0))
+        && (!('damagedQty' in data) || (data.damagedQty is int && data.damagedQty >= 0))
+        && (!('lotNumber' in data) || (data.lotNumber is string && data.lotNumber.size() <= 80))
+        && (!('grnNotes' in data) || (data.grnNotes is string && data.grnNotes.size() <= 400))
+        && (!('freightCost' in data) || (data.freightCost is number && data.freightCost >= 0))
+        && (!('customsCost' in data) || (data.customsCost is number && data.customsCost >= 0))
+        && (!('handlingCost' in data) || (data.handlingCost is number && data.handlingCost >= 0))
+        && data.totalCost is number && data.totalCost >= 0
+        && data.landedCost is number && data.landedCost >= 0
+        && data.status in ['Pending', 'Approved', 'PartiallyReceived', 'Received', 'Rejected']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStockCount(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'itemId', 'partNumber', 'partName', 'systemQty', 'countedQty', 'variance', 'unitCost', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'itemId', 'partNumber', 'partName', 'systemQty', 'countedQty', 'variance', 'unitCost', 'reason', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.itemId is string && data.itemId.size() >= 1 && data.itemId.size() <= 128
+        && data.partNumber is string && data.partNumber.size() >= 1 && data.partNumber.size() <= 100
+        && data.partName is string && data.partName.size() >= 1 && data.partName.size() <= 255
+        && data.systemQty is int && data.systemQty >= 0
+        && data.countedQty is int && data.countedQty >= 0
+        && data.variance is int
+        && data.unitCost is number && data.unitCost >= 0
+        && (!('reason' in data) || (data.reason is string && data.reason.size() <= 300))
+        && data.status in ['PendingApproval', 'Approved', 'Rejected']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSupplier(data, userId) {
+      return data.keys().hasAll(['ownerId', 'supplierName', 'leadTimeDays', 'fillRatePct', 'defectRatePct', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'supplierName', 'category', 'area', 'leadTimeDays', 'paymentTerms', 'fillRatePct', 'defectRatePct', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.supplierName is string && data.supplierName.size() >= 1 && data.supplierName.size() <= 200
+        && (!('category' in data) || (data.category is string && data.category.size() <= 100))
+        && (!('area' in data) || (data.area is string && data.area.size() <= 150))
+        && data.leadTimeDays is int && data.leadTimeDays >= 0
+        && (!('paymentTerms' in data) || (data.paymentTerms is string && data.paymentTerms.size() <= 80))
+        && data.fillRatePct is number && data.fillRatePct >= 0 && data.fillRatePct <= 100
+        && data.defectRatePct is number && data.defectRatePct >= 0 && data.defectRatePct <= 100
+        && data.status in ['Verified', 'Probation', 'Suspended']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSalesOrder(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'subtotal', 'discountAmount', 'vatAmount', 'totalAmount', 'paymentMethod', 'itemCount', 'etimsStatus', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'subtotal', 'discountAmount', 'vatAmount', 'totalAmount', 'paymentMethod', 'paymentReference', 'customerName', 'itemCount', 'etimsStatus', 'createdAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.subtotal is number && data.subtotal >= 0
+        && data.discountAmount is number && data.discountAmount >= 0
+        && data.vatAmount is number && data.vatAmount >= 0
+        && data.totalAmount is number && data.totalAmount >= 0
+        && data.paymentMethod in ['cash', 'mobile_money_reference', 'bank_reference', 'card_reference', 'credit']
+        && (!('paymentReference' in data) || (data.paymentReference is string && data.paymentReference.size() <= 120))
+        && (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 200))
+        && data.itemCount is int && data.itemCount >= 1
+        && data.etimsStatus in ['NotRequired', 'Queued', 'Accepted']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidDailyExpense(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'category', 'amount', 'expenseDate', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'category', 'amount', 'description', 'expenseDate', 'createdAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 120
+        && data.amount is number && data.amount > 0
+        && (!('description' in data) || (data.description is string && data.description.size() <= 400))
+        && data.expenseDate is string && data.expenseDate.size() == 10
+        && data.createdAt is timestamp;
+    }
+
+    function isValidBranchTransfer(data, userId) {
+      return data.keys().hasAll(['ownerId', 'sourceBranchId', 'destinationBranchName', 'partSummary', 'quantity', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'sourceBranchId', 'destinationBranchName', 'partSummary', 'quantity', 'riderName', 'plateNumber', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.sourceBranchId is string && data.sourceBranchId.size() >= 1 && data.sourceBranchId.size() <= 128
+        && data.destinationBranchName is string && data.destinationBranchName.size() >= 1 && data.destinationBranchName.size() <= 200
+        && data.partSummary is string && data.partSummary.size() >= 1 && data.partSummary.size() <= 300
+        && data.quantity is int && data.quantity >= 1
+        && (!('riderName' in data) || (data.riderName is string && data.riderName.size() <= 120))
+        && (!('plateNumber' in data) || (data.plateNumber is string && data.plateNumber.size() <= 40))
+        && data.status in ['Pending', 'Approved', 'Dispatched', 'Received', 'Rejected']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCreditAccount(data, userId) {
+      return data.keys().hasAll(['ownerId', 'customerName', 'creditLimit', 'outstandingBalance', 'lastOrderDaysAgo', 'churnRisk', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'customerName', 'creditLimit', 'outstandingBalance', 'lastOrderDaysAgo', 'churnRisk', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 200
+        && data.creditLimit is number && data.creditLimit >= 0
+        && data.outstandingBalance is number && data.outstandingBalance >= 0
+        && data.lastOrderDaysAgo is int && data.lastOrderDaysAgo >= 0
+        && data.churnRisk in ['Low', 'Medium', 'High']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRadarRequest(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'partDescription', 'urgencyStatus', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'partDescription', 'motorcycleModel', 'urgencyStatus', 'locationArea', 'quotedPrice', 'quotedSupplierArea', 'fitConfidence', 'reservationExpiresAt', 'disputeStatus', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.partDescription is string && data.partDescription.size() >= 1 && data.partDescription.size() <= 300
+        && (!('motorcycleModel' in data) || (data.motorcycleModel is string && data.motorcycleModel.size() <= 150))
+        && data.urgencyStatus in ['Urgent', 'Normal']
+        && (!('locationArea' in data) || (data.locationArea is string && data.locationArea.size() <= 150))
+        && (!('quotedPrice' in data) || (data.quotedPrice is number && data.quotedPrice >= 0))
+        && (!('quotedSupplierArea' in data) || (data.quotedSupplierArea is string && data.quotedSupplierArea.size() <= 150))
+        && (!('fitConfidence' in data) || data.fitConfidence in ['verified_fit', 'likely_fit', 'requires_confirmation'])
+        && (!('reservationExpiresAt' in data) || (data.reservationExpiresAt is string && data.reservationExpiresAt.size() <= 40))
+        && (!('disputeStatus' in data) || data.disputeStatus in ['None', 'Open', 'Resolved'])
+        && data.status in ['Open', 'Pending', 'Reserved', 'Resolved']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEtimsInvoice(data, userId) {
+      return data.keys().hasAll(['ownerId', 'saleId', 'invoiceNumber', 'totalAmount', 'vatAmount', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'saleId', 'invoiceNumber', 'totalAmount', 'vatAmount', 'cuin', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.saleId is string && data.saleId.size() >= 1 && data.saleId.size() <= 128
+        && data.invoiceNumber is string && data.invoiceNumber.size() >= 1 && data.invoiceNumber.size() <= 80
+        && data.totalAmount is number && data.totalAmount >= 0
+        && data.vatAmount is number && data.vatAmount >= 0
+        && (!('cuin' in data) || (data.cuin is string && data.cuin.size() <= 120))
+        && data.status in ['Queued', 'Submitted', 'Accepted', 'Failed']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPayoutBatch(data, userId) {
+      return data.keys().hasAll(['ownerId', 'title', 'category', 'recipientCount', 'totalAmount', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'title', 'category', 'recipientCount', 'totalAmount', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.category in ['Payroll', 'RiderSettlement', 'ReferralCommission', 'SupplierPayable']
+        && data.recipientCount is int && data.recipientCount >= 1
+        && data.totalAmount is number && data.totalAmount > 0
+        && data.status in ['PendingApproval', 'Approved', 'Rejected']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data, userId) {
+      return data.keys().hasAll(['ownerId', 'actionType', 'module', 'summary', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'actionType', 'module', 'summary', 'branchId', 'createdAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.actionType is string && data.actionType.size() >= 1 && data.actionType.size() <= 100
+        && data.module is string && data.module.size() >= 1 && data.module.size() <= 80
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 400
+        && (!('branchId' in data) || (data.branchId is string && data.branchId.size() <= 128))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidChatThread(data, userId) {
+      return data.keys().hasAll(['ownerId', 'title', 'rolePreset', 'modelMode', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'title', 'rolePreset', 'modelMode', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.rolePreset is string && data.rolePreset.size() >= 1 && data.rolePreset.size() <= 80
+        && data.modelMode in ['fast', 'standard', 'search', 'maps']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChatMessage(data, userId) {
+      return data.keys().hasAll(['ownerId', 'role', 'text', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'role', 'text', 'model', 'mode', 'linksJson', 'createdAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.role in ['user', 'model']
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 16000
+        && (!('model' in data) || (data.model is string && data.model.size() <= 80))
+        && (!('mode' in data) || (data.mode is string && data.mode.size() <= 40))
+        && (!('linksJson' in data) || (data.linksJson is string && data.linksJson.size() <= 8000))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidJournalEntry(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'entryNumber', 'entryType', 'description', 'debitAccount', 'creditAccount', 'totalDebit', 'totalCredit', 'status', 'createdAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'branchId', 'entryNumber', 'entryType', 'sourceId',
+          'description', 'debitAccount', 'creditAccount', 'totalDebit', 'totalCredit',
+          'linesJson', 'reversesEntryId', 'status', 'createdAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.entryNumber is string && data.entryNumber.size() >= 1 && data.entryNumber.size() <= 80
+        && data.entryType in ['sale', 'expense', 'return_reversal', 'grn_receipt', 'count_variance', 'manual_reversal', 'purchase_return']
+        && (!('sourceId' in data) || (data.sourceId is string && data.sourceId.size() <= 128))
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 400
+        && data.debitAccount is string && data.debitAccount.size() >= 1 && data.debitAccount.size() <= 80
+        && data.creditAccount is string && data.creditAccount.size() >= 1 && data.creditAccount.size() <= 80
+        && data.totalDebit is number && data.totalDebit > 0
+        && data.totalCredit is number && data.totalCredit == data.totalDebit
+        && (!('linesJson' in data) || (data.linesJson is string && data.linesJson.size() <= 8000))
+        && (!('reversesEntryId' in data) || (data.reversesEntryId is string && data.reversesEntryId.size() <= 128))
+        && data.status == 'Posted'
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCustomerProfile(data, userId) {
+      return data.keys().hasAll(['ownerId', 'fullName', 'consentWhatsApp', 'consentSms', 'consentMarketing', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'fullName', 'phone', 'bikeModel',
+          'consentWhatsApp', 'consentSms', 'consentMarketing',
+          'totalSpent', 'visitCount', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 200
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && (!('bikeModel' in data) || (data.bikeModel is string && data.bikeModel.size() <= 120))
+        && data.consentWhatsApp is bool
+        && data.consentSms is bool
+        && data.consentMarketing is bool
+        && (!('totalSpent' in data) || (data.totalSpent is number && data.totalSpent >= 0))
+        && (!('visitCount' in data) || (data.visitCount is int && data.visitCount >= 0))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSalesReturn(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'itemId', 'partNumber', 'quantity', 'refundAmount', 'refundMethod', 'reason', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'branchId', 'saleId', 'itemId', 'partNumber',
+          'quantity', 'refundAmount', 'refundMethod', 'reason',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && (!('saleId' in data) || (data.saleId is string && data.saleId.size() <= 128))
+        && data.itemId is string && data.itemId.size() >= 1 && data.itemId.size() <= 128
+        && data.partNumber is string && data.partNumber.size() >= 1 && data.partNumber.size() <= 100
+        && data.quantity is int && data.quantity >= 1
+        && data.refundAmount is number && data.refundAmount >= 0
+        && data.refundMethod in ['cash', 'mobile_money_reference', 'credit_note']
+        && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 300
+        && data.status in ['PendingApproval', 'Approved', 'Rejected']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDrawerShift(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'shiftDay', 'openingFloat', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'branchId', 'shiftDay', 'openingFloat',
+          'expectedCash', 'countedCash', 'variance', 'notes',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.shiftDay is string && data.shiftDay.size() == 10
+        && data.openingFloat is number && data.openingFloat >= 0
+        && (!('expectedCash' in data) || data.expectedCash is number)
+        && (!('countedCash' in data) || (data.countedCash is number && data.countedCash >= 0))
+        && (!('variance' in data) || data.variance is number)
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 300))
+        && data.status in ['Open', 'Closed', 'Approved']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAppNotification(data, userId) {
+      return data.keys().hasAll(['ownerId', 'templateKey', 'channel', 'title', 'body', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'templateKey', 'channel', 'title', 'body', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && (!('branchId' in data) || (data.branchId is string && data.branchId.size() <= 128))
+        && data.templateKey is string && data.templateKey.size() >= 1 && data.templateKey.size() <= 80
+        && data.channel in ['in_app', 'whatsapp', 'sms', 'email']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.body is string && data.body.size() >= 1 && data.body.size() <= 600
+        && data.status in ['Unread', 'Read', 'Suppressed', 'Queued']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Connection check path
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow create: if isValidId(userId) && isOwner(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) && isOwner(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'activeOrganizationId', 'activeBranchId', 'complianceMode', 'updatedAt']);
+
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId);
+        allow create: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId)
+          && isValidPrivateInfo(incoming(), userId)
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId)
+          && isValidPrivateInfo(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'photoURL', 'updatedAt']);
+      }
+
+      match /inventory/{itemId} {
+        allow get: if isValidId(userId) && isValidId(itemId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(itemId) && isOwner(userId)
+          && isValidInventoryItem(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(itemId) && isOwner(userId)
+          && isValidInventoryItem(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().branchId == existing().branchId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'stockQuantity', 'reservedQuantity', 'unitCost', 'retailPrice', 'reorderLevel',
+            'velocityClass', 'blindListed', 'compatibleModels', 'category',
+            'brand', 'barcode', 'qualityGrade', 'uom', 'packSize', 'binLocation', 'oemCrossRefs', 'fitmentConfidence',
+            'updatedAt'
+          ]);
+      }
+
+      match /stockMovements/{movementId} {
+        allow get: if isValidId(userId) && isValidId(movementId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(movementId) && isOwner(userId)
+          && isValidStockMovement(incoming(), userId)
+          && incoming().createdAt == request.time
+          && userExists(userId);
+        allow update, delete: if false;
+      }
+
+      match /purchaseOrders/{poId} {
+        allow get: if isValidId(userId) && isValidId(poId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(poId) && isOwner(userId)
+          && isValidPurchaseOrder(incoming(), userId)
+          && incoming().status == 'Pending'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(poId) && isOwner(userId)
+          && isValidPurchaseOrder(incoming(), userId)
+          && existing().status in ['Pending', 'Approved', 'PartiallyReceived']
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'landedCost', 'receivedQty', 'damagedQty', 'lotNumber', 'grnNotes',
+            'freightCost', 'customsCost', 'handlingCost', 'updatedAt'
+          ]);
+      }
+
+      match /stockCounts/{countId} {
+        allow get: if isValidId(userId) && isValidId(countId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(countId) && isOwner(userId)
+          && isValidStockCount(incoming(), userId)
+          && incoming().status == 'PendingApproval'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(countId) && isOwner(userId)
+          && isValidStockCount(incoming(), userId)
+          && existing().status == 'PendingApproval'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /suppliers/{supplierId} {
+        allow get: if isValidId(userId) && isValidId(supplierId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(supplierId) && isOwner(userId)
+          && isValidSupplier(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(supplierId) && isOwner(userId)
+          && isValidSupplier(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['category', 'area', 'leadTimeDays', 'paymentTerms', 'fillRatePct', 'defectRatePct', 'status', 'updatedAt']);
+      }
+
+      match /sales/{saleId} {
+        allow get: if isValidId(userId) && isValidId(saleId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(saleId) && isOwner(userId)
+          && isValidSalesOrder(incoming(), userId)
+          && incoming().createdAt == request.time
+          && userExists(userId);
+        allow update, delete: if false;
+      }
+
+      match /expenses/{expenseId} {
+        allow get: if isValidId(userId) && isValidId(expenseId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(expenseId) && isOwner(userId)
+          && isValidDailyExpense(incoming(), userId)
+          && incoming().createdAt == request.time
+          && userExists(userId);
+        allow update, delete: if false;
+      }
+
+      match /transfers/{transferId} {
+        allow get: if isValidId(userId) && isValidId(transferId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(transferId) && isOwner(userId)
+          && isValidBranchTransfer(incoming(), userId)
+          && incoming().status == 'Pending'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(transferId) && isOwner(userId)
+          && isValidBranchTransfer(incoming(), userId)
+          && existing().status in ['Pending', 'Approved', 'Dispatched']
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'riderName', 'plateNumber', 'updatedAt']);
+      }
+
+      match /creditAccounts/{accountId} {
+        allow get: if isValidId(userId) && isValidId(accountId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(accountId) && isOwner(userId)
+          && isValidCreditAccount(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(accountId) && isOwner(userId)
+          && isValidCreditAccount(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['outstandingBalance', 'creditLimit', 'lastOrderDaysAgo', 'churnRisk', 'updatedAt']);
+      }
+
+      match /radarRequests/{requestId} {
+        allow get: if isValidId(userId) && isValidId(requestId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(requestId) && isOwner(userId)
+          && isValidRadarRequest(incoming(), userId)
+          && incoming().status == 'Open'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(requestId) && isOwner(userId)
+          && isValidRadarRequest(incoming(), userId)
+          && existing().status != 'Resolved'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'quotedPrice', 'quotedSupplierArea', 'fitConfidence', 'reservationExpiresAt', 'disputeStatus', 'updatedAt']);
+      }
+
+      match /etimsInvoices/{invoiceId} {
+        allow get: if isValidId(userId) && isValidId(invoiceId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(invoiceId) && isOwner(userId)
+          && isValidEtimsInvoice(incoming(), userId)
+          && incoming().status == 'Queued'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(invoiceId) && isOwner(userId)
+          && isValidEtimsInvoice(incoming(), userId)
+          && existing().status != 'Accepted'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'cuin', 'updatedAt']);
+      }
+
+      match /payoutBatches/{batchId} {
+        allow get: if isValidId(userId) && isValidId(batchId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(batchId) && isOwner(userId)
+          && isValidPayoutBatch(incoming(), userId)
+          && incoming().status == 'PendingApproval'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(batchId) && isOwner(userId)
+          && isValidPayoutBatch(incoming(), userId)
+          && existing().status == 'PendingApproval'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      }
+
+      match /auditLogs/{logId} {
+        allow get: if isValidId(userId) && isValidId(logId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(logId) && isOwner(userId)
+          && isValidAuditLog(incoming(), userId)
+          && incoming().createdAt == request.time
+          && userExists(userId);
+        allow update, delete: if false;
+      }
+
+      match /chatThreads/{threadId} {
+        allow get: if isValidId(userId) && isValidId(threadId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(threadId) && isOwner(userId)
+          && isValidChatThread(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(threadId) && isOwner(userId)
+          && isValidChatThread(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'rolePreset', 'modelMode', 'updatedAt']);
+
+        match /messages/{messageId} {
+          allow get: if isValidId(userId) && isValidId(threadId) && isValidId(messageId) && isOwner(userId);
+          allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+          allow create: if isValidId(userId) && isValidId(threadId) && isValidId(messageId) && isOwner(userId)
+            && isValidChatMessage(incoming(), userId)
+            && incoming().createdAt == request.time
+            && exists(/databases/$(database)/documents/users/$(userId)/chatThreads/$(threadId));
+          allow update, delete: if false;
+        }
+      }
+
+      match /journalEntries/{entryId} {
+        allow get: if isValidId(userId) && isValidId(entryId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(entryId) && isOwner(userId)
+          && isValidJournalEntry(incoming(), userId)
+          && incoming().createdAt == request.time
+          && userExists(userId);
+        allow update, delete: if false;
+      }
+
+      match /customers/{customerId} {
+        allow get: if isValidId(userId) && isValidId(customerId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(customerId) && isOwner(userId)
+          && isValidCustomerProfile(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(customerId) && isOwner(userId)
+          && isValidCustomerProfile(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName', 'phone', 'bikeModel',
+            'consentWhatsApp', 'consentSms', 'consentMarketing',
+            'totalSpent', 'visitCount', 'updatedAt'
+          ]);
+        allow delete: if false;
+      }
+
+      match /salesReturns/{returnId} {
+        allow get: if isValidId(userId) && isValidId(returnId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(returnId) && isOwner(userId)
+          && isValidSalesReturn(incoming(), userId)
+          && incoming().status == 'PendingApproval'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(returnId) && isOwner(userId)
+          && isValidSalesReturn(incoming(), userId)
+          && existing().status == 'PendingApproval'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /drawerShifts/{shiftId} {
+        allow get: if isValidId(userId) && isValidId(shiftId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(shiftId) && isOwner(userId)
+          && isValidDrawerShift(incoming(), userId)
+          && incoming().status == 'Open'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(shiftId) && isOwner(userId)
+          && isValidDrawerShift(incoming(), userId)
+          && existing().status in ['Open', 'Closed']
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['expectedCash', 'countedCash', 'variance', 'notes', 'status', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /notifications/{notificationId} {
+        allow get: if isValidId(userId) && isValidId(notificationId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(notificationId) && isOwner(userId)
+          && isValidAppNotification(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(notificationId) && isOwner(userId)
+          && isValidAppNotification(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if false;
+      }
+    }
+  }
+}

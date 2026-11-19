@@ -76,3 +76,23 @@ Status: NOT IMPLEMENTED.
 Status: NOT IMPLEMENTED/NOT TESTED.
 - Compliance toggle fields exist on organizations.
 - No M-Pesa webhook/STK implementation or eTIMS/VSCU workflow evidence.
+
+---
+
+## Phase 2 — Inventory, Catalogue, Procurement & SaaS Visual Overhaul (2026-11-19)
+
+Status: **IMPLEMENTED & VERIFIED** on the active Firebase/Firestore workspace (`docs/specs/SLICE-02-phase2-inventory-procurement/SPEC.md`, `docs/architecture/adr/ADR-004-phase2-inventory-procurement.md`); Supabase/Postgres backend modules remain historical.
+
+### Implemented & Verified Capabilities
+- **Parts Master & Availability (`Inventory.jsx`, `firestoreStore.jsx`, `kmsDomain.js`)**:
+  - Added full Parts Master attributes (`brand`, `barcode`, `qualityGrade`, `uom`, `packSize`, `binLocation`, `reservedQuantity`, `oemCrossRefs`, `fitmentConfidence`) and net available stock (`computeAvailableStock`).
+  - Added valuation CSV export (`buildInventoryValuationCsv`), inline reservation adjustments, velocity filtering (`fast`, `normal`, `slow`, `dead`), and Google Search OEM cross-reference lookup.
+- **Automated Reorder & Dead-Stock Capital Recovery**:
+  - `buildReorderRecommendations` flags below-threshold SKUs, ranks by priority (`Critical` / `Reorder`), detects open PO coverage, and supports 1-click draft PO creation plus dead-stock branch transfer / markdown logging.
+- **Purchase Orders, Partial/Full GRN & Supplier Registry**:
+  - Extended `PurchaseOrder` status (`PartiallyReceived`), freight/customs/handling landed cost settlement (`computeGrnSettlement`), partial/damaged lot receiving, atomic stock credit + `stockMovements` (`receipt`, `damage`) persistence, and Supplier Reliability Scorecard (`evaluateSupplierScore`).
+- **Cycle Counts & Immutable Movement Ledger**:
+  - Added `/users/{userId}/stockCounts/{countId}` variance submission and manager approval workflow (`resolveStockCount`) using atomic `writeBatch` updates to SKU quantity, `count_variance` ledger rows, and audit log entries.
+- **Enterprise SaaS Visual & Layout Overhaul (`index.css`, `App.css`, `Shell.jsx`, `SelectionPages.jsx`)**:
+  - Replaced Vite starter `56px` heading scale and stacked headers with compact single-row SaaS workspace header (`66px` topbar, `18px` `h1`), `Plus Jakarta Sans` + `DM Sans` + `JetBrains Mono` typography, single-elevation flat borders, squared `4px` semantic tags, and responsive `390px` mobile layout (`0px` horizontal overflow).
+

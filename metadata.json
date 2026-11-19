@@ -1,0 +1,10 @@
+{
+  "name": "KenyaMoto Supply Hub",
+  "description": "Kenya Motorcycle Spare Parts & Supply Chain Ecosystem — multi-tenant branch inventory, counter POS, procurement, wholesale dispatch, parts radar, compliance, and Gemini AI co-pilot.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

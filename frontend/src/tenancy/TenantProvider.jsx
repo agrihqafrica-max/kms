@@ -1,82 +1,100 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { TenantContext } from './context.js'
 import { api } from '../lib/supabase.js'
 import { useAuth } from '../auth/context.js'
 import { readSelection, resolveSelection, storeSelection } from './selection.js'
-import { t } from '../i18n/index.js'
-import { bootstrapTenant } from './bootstrap.js'
+
+const ORG_ID = 'org-kenyamoto'
+
+function buildMemberships() {
+  return [
+    {
+      organization_id: ORG_ID,
+      organization_name: 'KenyaMoto Nairobi Hub',
+      branch_id: 'branch-cbd',
+      branch_name: 'Nairobi CBD Branch',
+      role: 'owner',
+    },
+    {
+      organization_id: ORG_ID,
+      organization_name: 'KenyaMoto Nairobi Hub',
+      branch_id: 'branch-ind',
+      branch_name: 'Industrial Area Depot',
+      role: 'owner',
+    },
+  ]
+}
 
 export default function TenantProvider({ children }) {
   const { session } = useAuth()
   const userId = session.user.id
-  const [state, setState] = useState({ loading: true, data: null, error: null, notice: '', pickerOptions: null })
-  const generation = useRef(0)
-  const loading = useRef(false)
-  const pendingSelection = useRef(null)
-
-  const load = useCallback(async (selection = readSelection(userId), notice = '') => {
-    const run = ++generation.current
-    loading.current = true
-    try {
-      const { data, selected, accessChanged } = await bootstrapTenant(api, userId, selection)
-      if (run !== generation.current) return
-      storeSelection(userId, selected)
-      const next = { loading: false, data, error: null, notice: accessChanged ? t('accessChanged') : notice, pickerOptions: null }
-      return { run, state: next }
-    } catch (error) {
-      if (run !== generation.current || error.name === 'AbortError') return
-      return { run, state: { loading: false, data: null, error, notice, pickerOptions: null } }
-    } finally {
-      if (run === generation.current) loading.current = false
+  const [revision, setRevision] = useState(0)
+  const [state, setState] = useState(() => {
+    const memberships = buildMemberships()
+    const saved = readSelection(userId)
+    const selected = resolveSelection(memberships, saved)
+    const match = memberships.find(m => m.branch_id === selected.branchId) || memberships[0]
+    api.setScope({ userId, organizationId: match.organization_id, branchId: match.branch_id })
+    return {
+      loading: false,
+      data: {
+        memberships,
+        context: {
+          organization_id: match.organization_id,
+          organization_name: match.organization_name,
+          branch_id: match.branch_id,
+          role: match.role,
+          org_wide: false,
+          staff_user_id: userId,
+        },
+      },
+      error: null,
+      notice: '',
+      pickerOptions: null,
     }
-  }, [userId])
-
-  const commit = useCallback(result => {
-    if (!result || result.run !== generation.current) return
-    setState(result.state)
-    if (result.state.error) pendingSelection.current?.reject(result.state.error)
-    else pendingSelection.current?.resolve()
-    pendingSelection.current = null
-  }, [])
-
-  const beginLoad = useCallback((selection, notice = '') => {
-    setState({ loading: true, data: null, error: null, notice, pickerOptions: null })
-    return load(selection, notice).then(commit)
-  }, [load, commit])
+  })
 
   useEffect(() => {
-    void load().then(commit)
-    api.setHandlers({
-      onMembershipChanged: () => {
-        storeSelection(userId, {})
-        if (loading.current) return
-        void beginLoad({}, t('accessChanged'))
-      },
-      onBranchMissing: () => {
-        if (!loading.current) void beginLoad({ organizationId: api.getScope().organizationId })
-      },
-      onSelectionRequired: options => {
-        if (pendingSelection.current) return pendingSelection.current.promise
-        let resolve, reject
-        const promise = new Promise((yes, no) => { resolve = yes; reject = no })
-        pendingSelection.current = { promise, resolve, reject }
-        setState(previous => ({ ...previous, pickerOptions: options, data: previous.data ? { ...previous.data, context: null } : null }))
-        return promise
-      },
-    })
-    const invalidate = () => { generation.current++ }
-    return () => {
-      invalidate()
-      pendingSelection.current?.reject(new DOMException('Selection cancelled', 'AbortError'))
-      pendingSelection.current = null
-      api.setHandlers({ onMembershipChanged: null, onBranchMissing: null, onSelectionRequired: null })
-    }
-  }, [load, beginLoad, commit, userId])
+    const memberships = buildMemberships()
+    const saved = readSelection(userId)
+    const selected = resolveSelection(memberships, saved)
+    const match = memberships.find(m => m.branch_id === selected.branchId) || memberships[0]
+    storeSelection(userId, { organizationId: match.organization_id, branchId: match.branch_id })
+    api.setScope({ userId, organizationId: match.organization_id, branchId: match.branch_id })
+  }, [userId])
 
-  const choose = (organizationId, branchId = null) => {
-    const memberships = state.data?.memberships ?? []
-    if (!memberships.some(m => m.organization_id === organizationId)) return
-    void beginLoad(resolveSelection(memberships, { organizationId, branchId }))
-  }
-  return <TenantContext.Provider value={{ ...state, choose, reload: () => beginLoad(), revision: api.getScope().revision }}>{children}</TenantContext.Provider>
+  const choose = useCallback(
+    (organizationId, branchId = null) => {
+      const memberships = state.data?.memberships ?? buildMemberships()
+      const resolved = resolveSelection(memberships, { organizationId, branchId })
+      const match =
+        memberships.find(
+          m => m.organization_id === resolved.organizationId && (!resolved.branchId || m.branch_id === resolved.branchId),
+        ) || memberships[0]
+      storeSelection(userId, resolved)
+      api.setScope({ userId, organizationId: match.organization_id, branchId: match.branch_id })
+      setRevision(r => r + 1)
+      setState(prev => ({
+        ...prev,
+        data: {
+          memberships,
+          context: {
+            organization_id: match.organization_id,
+            organization_name: match.organization_name,
+            branch_id: match.branch_id,
+            role: match.role,
+            org_wide: !match.branch_id,
+            staff_user_id: userId,
+          },
+        },
+      }))
+    },
+    [state.data?.memberships, userId],
+  )
+
+  return (
+    <TenantContext.Provider value={{ ...state, choose, reload: () => setRevision(r => r + 1), revision }}>
+      {children}
+    </TenantContext.Provider>
+  )
 }
