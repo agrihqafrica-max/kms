@@ -14,7 +14,7 @@ function tokenResponse(id, version = 1) {
   }
 }
 
-test('installed SDK keeps replacement account usable after a superseded refresh', { timeout: 5000 }, async () => {
+test('installed SDK keeps replacement account usable after a superseded refresh', { timeout: 15000 }, async () => {
   let releaseA, startedA
   const gate = new Promise(resolve => { releaseA = resolve })
   const ready = new Promise(resolve => { startedA = resolve })

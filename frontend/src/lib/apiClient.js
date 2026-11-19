@@ -31,7 +31,7 @@ export function createApiClient({ baseUrl, auth, fetcher = fetch }) {
     throw new ApiError(401, t('sessionExpired'))
   }
 
-  async function request(path, { tenant = true, signal } = {}) {
+  async function request(path, { tenant = true, signal, method = 'GET', body } = {}) {
     if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')) {
       throw new Error('API path must be relative')
     }
@@ -57,9 +57,16 @@ export function createApiClient({ baseUrl, auth, fetcher = fetch }) {
       const headers = { Authorization: `Bearer ${session.access_token}`, Accept: 'application/json' }
       if (tenant && snapshot.organizationId) headers['X-Organization-Id'] = snapshot.organizationId
       if (tenant && snapshot.branchId) headers['X-Branch-Id'] = snapshot.branchId
+      if (body !== undefined) headers['Content-Type'] = 'application/json'
       let response
       try {
-        response = await fetcher(`${baseUrl.replace(/\/$/, '')}${path}`, { headers, signal, redirect: 'error' })
+        response = await fetcher(`${baseUrl.replace(/\/$/, '')}${path}`, {
+          headers,
+          signal,
+          method,
+          body: body === undefined ? undefined : JSON.stringify(body),
+          redirect: 'error',
+        })
       } catch (error) {
         check()
         if (error.name === 'AbortError') throw error
@@ -67,9 +74,9 @@ export function createApiClient({ baseUrl, auth, fetcher = fetch }) {
         throw new ApiError(0, t('networkError'))
       }
       check()
-      const body = await response.json().catch(() => null)
+      const responseBody = await response.json().catch(() => null)
       check()
-      if (response.ok) return body
+      if (response.ok) return responseBody
       if (response.status === 401) {
         if (refreshed) return expire()
         refreshed = true
@@ -103,7 +110,7 @@ export function createApiClient({ baseUrl, auth, fetcher = fetch }) {
         } else session = result.data.session
         continue
       }
-      const detail = body?.detail
+      const detail = responseBody?.detail
       if (response.status === 409 && detail?.code === 'organization_selection_required' && !selected && handlers.onSelectionRequired) {
         selected = true
         await handlers.onSelectionRequired(detail.organizations)

@@ -62,3 +62,50 @@ class OrganizationRegistration(BaseModel):
     subscription_tier: str = Field(default="standard", max_length=50)
     kra_compliance_enabled: bool = False
     payroll_compliance_enabled: bool = False
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_id: UUID
+    order_number: str = Field(min_length=1, max_length=100)
+    items: list[dict]
+    notes: str | None = None
+    organization_id: UUID | None = None
+    branch_id: UUID | None = None
+
+
+class ResolvePurchaseOrder(BaseModel):
+    approve: bool
+
+
+class GoodsReceiptCreate(BaseModel):
+    purchase_order_id: UUID
+    receipt_reference: str = Field(min_length=1, max_length=100)
+    items: list[dict]
+
+
+class BranchTransferCreate(BaseModel):
+    destination_branch_id: UUID
+    items: list[dict]
+    organization_id: UUID | None = None
+    source_branch_id: UUID | None = None
+
+
+class ResolveBranchTransfer(BaseModel):
+    approve: bool
+
+
+class DispatchBranchTransfer(BaseModel):
+    rider_name: str = Field(min_length=1, max_length=255)
+    rider_phone: str = Field(min_length=1, max_length=50)
+    motorbike_number_plate: str = Field(min_length=1, max_length=50)
+
+
+class SalesReturnCreate(BaseModel):
+    order_id: UUID
+    reason: str = Field(min_length=1)
+    items: list[dict]
+
+
+class ResolveSalesReturn(BaseModel):
+    approve: bool
+    refund_method: str = Field(default="cash", max_length=50)

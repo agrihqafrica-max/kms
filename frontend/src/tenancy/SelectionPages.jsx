@@ -21,10 +21,11 @@ export function OrgPicker() {
   </section></main>
 }
 export function NoOrganization() {
+  const navigate = useNavigate()
   const { reload, notice } = useTenant()
   const { signOut } = useAuth()
   return <main className="selection-page"><section className="auth-card"><Brand /><h1 tabIndex={-1}>{t('noOrg')}</h1><p>{t('noOrgBody')}</p>{notice && <p role="status">{notice}</p>}
-    <button disabled>{t('registerBusiness')} — {t('comingNext')}</button><div className="actions"><button className="primary" onClick={reload}>{t('checkAgain')}</button><button onClick={() => signOut()}>{t('signOut')}</button></div>
+    <button className="primary" onClick={() => navigate('/register-organization')}>{t('registerBusiness')}</button><div className="actions"><button className="primary" onClick={reload}>{t('checkAgain')}</button><button onClick={() => signOut()}>{t('signOut')}</button></div>
   </section></main>
 }
 

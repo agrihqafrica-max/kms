@@ -38,6 +38,22 @@ test('attaches current credentials and selection; bootstrap omits tenant headers
   assert.equal(requests[1].headers['X-Organization-Id'], undefined)
 })
 
+test('sends organization registration as an authenticated JSON POST without tenant headers', async () => {
+  let request
+  const s = setup(async (url, init) => { request = { url, ...init }; return response(201, { organization_id: 'org-new' }) })
+  assert.deepEqual(await s.client.request('/organizations/register', {
+    tenant: false,
+    method: 'POST',
+    body: { name: 'QA Shop', org_type: 'RETAIL' },
+  }), { organization_id: 'org-new' })
+  assert.equal(request.method, 'POST')
+  assert.equal(request.headers.Authorization, 'Bearer test-access')
+  assert.equal(request.headers['Content-Type'], 'application/json')
+  assert.equal(request.headers['X-Organization-Id'], undefined)
+  assert.equal(request.headers['X-Branch-Id'], undefined)
+  assert.deepEqual(JSON.parse(request.body), { name: 'QA Shop', org_type: 'RETAIL' })
+})
+
 test('concurrent and delayed old-token 401s share a single rotation', async () => {
   let release
   let started

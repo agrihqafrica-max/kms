@@ -22,7 +22,7 @@ export default {
   branchUnavailable: 'Branch list is not available yet. Ask your owner to assign you to a branch, or try again in the next release.',
   accessChanged: 'Your access to this organisation has changed.', noOrg: 'You don’t have an organisation yet.',
   noOrgBody: 'Your account is ready. Your owner must add you as staff before you can access a workspace.',
-  registerBusiness: 'Register your business', comingNext: 'Coming in the next release', checkAgain: 'Check again',
+  registerBusiness: 'Register your business', registerBusinessBody: 'Create the first owner profile for this business. Staff profiles can be added after the organisation is created.', businessName: 'Business name', kraPin: 'KRA PIN (optional)', organizationType: 'Business type', kraCompliance: 'Enable KRA compliance', payrollCompliance: 'Enable payroll compliance', comingNext: 'Coming in the next release', checkAgain: 'Check again',
   staffUnlinked: 'Your staff profile is not linked yet. Ask your owner to complete your staff setup.', dismiss: 'Dismiss',
   offline: 'You are offline. Live data is unavailable. Offline trading is not available in this release.',
   healthOk: 'Database connected', healthChecking: 'Checking connection', healthDegraded: 'Service degraded', healthOffline: 'Service unreachable',

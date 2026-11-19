@@ -14,6 +14,9 @@ const Overview = lazy(() => import('./pages/Overview.jsx'))
 const Pos = lazy(() => import('./pages/Pos.jsx'))
 const Radar = lazy(() => import('./pages/Radar.jsx'))
 const Placeholder = lazy(() => import('./pages/Placeholder.jsx'))
+const OrganizationRegistration = lazy(() => import('./pages/OrganizationRegistration.jsx'))
+const Inventory = lazy(() => import('./pages/Inventory.jsx'))
+const Finance = lazy(() => import('./pages/Finance.jsx'))
 
 function AuthScreen({ mode }) {
   const { session, recovery } = useAuth()
@@ -39,6 +42,13 @@ function TenantGate() {
   if (data?.context && location.pathname === '/no-organization') return <Navigate to="/app/overview" replace />
   return <Outlet />
 }
+function RegistrationGate() {
+  const { session, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return <Loading />
+  if (!session) return <Navigate to="/signin" state={{ from: location.pathname }} replace />
+  return <OrganizationRegistration />
+}
 function FocusRoute() {
   const { pathname } = useLocation()
   useEffect(() => {
@@ -60,13 +70,16 @@ export default function Router() {
     <Route path="/signup" element={<AuthScreen mode="signup" />} />
     <Route path="/reset-password" element={<AuthScreen mode="reset" />} />
     <Route path="/update-password" element={<AuthScreen mode="update" />} />
+    <Route path="/register-organization" element={<RegistrationGate />} />
     <Route element={<AuthGate />}>
       <Route path="/select-organization" element={<OrgPicker />} />
       <Route path="/no-organization" element={<NoOrganization />} />
       <Route path="/app" element={<Shell />}>
         <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<Overview />} /><Route path="pos" element={<Pos />} /><Route path="radar" element={<Radar />} />
-        {['inventory', 'finance', 'dispatch'].map(page => <Route key={page} path={page} element={<Placeholder page={page} />} />)}
+        <Route path="inventory" element={<Inventory />} />
+        <Route path="finance" element={<Finance />} />
+        {['dispatch'].map(page => <Route key={page} path={page} element={<Placeholder page={page} />} />)}
       </Route>
     </Route>
     <Route path="*" element={<Navigate to="/app/overview" replace />} />

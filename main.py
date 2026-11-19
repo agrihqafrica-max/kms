@@ -15,6 +15,9 @@ from routers.finance import router as finance_router
 from routers.radar import router as radar_router
 from routers.organizations import router as organizations_router
 from routers.auth import router as auth_router
+from routers.procurement import router as procurement_router
+from routers.transfers import router as transfers_router
+from routers.returns import router as returns_router
 
 logger = logging.getLogger("kms.api")
 
@@ -37,6 +40,9 @@ app.include_router(finance_router)
 app.include_router(radar_router)
 app.include_router(organizations_router)
 app.include_router(auth_router)
+app.include_router(procurement_router)
+app.include_router(transfers_router)
+app.include_router(returns_router)
 
 
 _SQLSTATE_RESPONSES = {
