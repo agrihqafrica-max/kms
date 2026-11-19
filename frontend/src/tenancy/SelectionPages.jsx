@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/context.js'
 import { useTenant } from './context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
@@ -28,16 +28,21 @@ export function OrgPicker() {
             <button
               key={m.organization_id}
               onClick={() => {
-                choose(m.organization_id)
+                choose(m.organization_id, m.branch_id)
                 navigate('/app/overview', { replace: true })
               }}
             >
               <strong>{m.organization_name ?? m.name}</strong>
-              <span>{t(`role_${m.role}`)}</span>
+              <span>{t(`role_${m.role}`)} · {m.branch_name || 'Main Shop'}</span>
             </button>
           ))}
         </div>
-        <button onClick={() => signOut()}>{t('signOut')}</button>
+        <div className="actions">
+          <Link className="button-link primary" to="/register-organization">
+            + Register Shop / Workshop
+          </Link>
+          <button onClick={() => signOut()}>{t('signOut')}</button>
+        </div>
       </section>
     </main>
   )
@@ -73,7 +78,19 @@ export function BranchSwitcher({ compact = false }) {
   const { activeBranchId, setActiveBranch, branches } = useWorkspace()
   const { context, memberships } = data
   const organizations = [...new Map(memberships.map(m => [m.organization_id, m.organization_name])).entries()]
-  const currentBranch = activeBranchId || context.branch_id || branches[0]?.id || 'branch-cbd'
+
+  const orgBranchesFromMemberships = memberships
+    .filter(m => m.organization_id === context.organization_id && m.branch_id)
+    .map(m => ({ id: m.branch_id, name: m.branch_name || m.branch_id, area: m.area || 'Kenya' }))
+  const visibleBranches = orgBranchesFromMemberships.length
+    ? orgBranchesFromMemberships
+    : branches.filter(b => !b.organizationId || b.organizationId === context.organization_id)
+  const effectiveBranches = visibleBranches.length ? visibleBranches : branches
+  const currentBranch = effectiveBranches.some(b => b.id === activeBranchId)
+    ? activeBranchId
+    : effectiveBranches.some(b => b.id === context.branch_id)
+      ? context.branch_id
+      : effectiveBranches[0]?.id || 'branch-cbd'
 
   return (
     <div className={compact ? 'tenant-switcher compact' : 'tenant-switcher'} id="tenant-switcher">
@@ -82,7 +99,12 @@ export function BranchSwitcher({ compact = false }) {
         <select
           aria-label={t('organization')}
           value={context.organization_id}
-          onChange={e => choose(e.target.value, currentBranch)}
+          onChange={e => {
+            const nextOrg = e.target.value
+            const firstBranch = memberships.find(m => m.organization_id === nextOrg)?.branch_id || null
+            choose(nextOrg, firstBranch)
+            if (firstBranch) void setActiveBranch(firstBranch, nextOrg)
+          }}
         >
           {organizations.map(([id, name]) => (
             <option key={id} value={id}>
@@ -99,17 +121,19 @@ export function BranchSwitcher({ compact = false }) {
           onChange={e => {
             const nextBranch = e.target.value
             choose(context.organization_id, nextBranch)
-            void setActiveBranch(nextBranch)
+            void setActiveBranch(nextBranch, context.organization_id)
           }}
         >
-          {branches.map(b => (
+          {effectiveBranches.map(b => (
             <option key={b.id} value={b.id}>
               {b.name}
             </option>
           ))}
         </select>
       </label>
+      <Link className="btn-quiet button-link" to="/register-organization" title="Add or retain another shop or workshop">
+        + Shop
+      </Link>
     </div>
   )
 }
-

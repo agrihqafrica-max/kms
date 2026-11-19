@@ -19,6 +19,7 @@
     "@google/genai": "^3.6.1",
     "eslint": "^10.15.0",
     "express": "^5.1.0",
-    "firebase": "^13.4.0"
+    "firebase": "^13.4.0",
+    "nodemailer": "^10.6.0"
   }
 }

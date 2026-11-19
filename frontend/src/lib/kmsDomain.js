@@ -16,7 +16,7 @@ export const AI_ROLE_PRESETS = [
     id: 'margin_guardian',
     label: 'Financial & Margin Guardian',
     systemInstruction:
-      'You are the Financial & Margin Guardian for KenyaMoto Supply Hub. Analyze KES gross margins, daily expenses, landed cost impact, cash variance, KRA eTIMS VAT readiness, and flag payout or discount risks before owner approval.',
+      'You are the Financial & Margin Guardian for Kenya Motorcycle Spare Parts General. Analyze KES gross margins, daily expenses, landed cost impact, cash variance, KRA eTIMS VAT readiness, and flag payout or discount risks before owner approval.',
   },
   {
     id: 'procurement_copilot',
@@ -114,8 +114,11 @@ export function enqueueOfflineSale(queue, salePayload) {
   const key = salePayload?.idempotencyKey
   if (!key) throw new Error('Offline sale requires an idempotencyKey')
   if (list.some(entry => entry.idempotencyKey === key)) return list
+  const maxSeq = list.reduce((max, entry) => Math.max(max, Number(entry?.clientSequence || 0)), 0)
   list.push({
     ...salePayload,
+    deviceId: salePayload.deviceId || 'DEV-COUNTER-01',
+    clientSequence: salePayload.clientSequence || maxSeq + 1,
     queuedAt: salePayload.queuedAt || new Date().toISOString(),
     syncStatus: 'pending',
   })
@@ -360,4 +363,168 @@ export function buildInventoryValuationCsv(inventory) {
   })
   return [headers.join(','), ...rows].join('\n')
 }
+
+export function classifyAbcInventory(inventory = [], stockMovements = []) {
+  const items = Array.isArray(inventory) ? inventory : []
+  const movements = Array.isArray(stockMovements) ? stockMovements : []
+  if (!items.length) return {}
+
+  const soldQtyByItem = new Map()
+  for (const m of movements) {
+    if (m?.movementType === 'sale' && m?.itemId) {
+      soldQtyByItem.set(m.itemId, (soldQtyByItem.get(m.itemId) || 0) + Math.abs(Number(m.quantityDelta || 0)))
+    }
+  }
+
+  const scored = items.map(item => {
+    const soldUnits = soldQtyByItem.get(item.id) || 0
+    const retail = Math.max(0, Number(item?.retailPrice || 0))
+    const stockCostVal = Math.max(0, Number(item?.stockQuantity || 0)) * Math.max(0, Number(item?.unitCost || 0))
+    const movementValue = soldUnits * retail
+    const basisValue = movementValue > 0 ? movementValue : stockCostVal
+    return { item, basisValue, soldUnits }
+  })
+
+  scored.sort((a, b) => b.basisValue - a.basisValue)
+  const totalBasis = scored.reduce((s, r) => s + r.basisValue, 0)
+  const result = {}
+  let cumulative = 0
+
+  for (let idx = 0; idx < scored.length; idx += 1) {
+    const entry = scored[idx]
+    cumulative += entry.basisValue
+    const sharePct = totalBasis > 0 ? (cumulative / totalBasis) * 100 : ((idx + 1) / scored.length) * 100
+    let abcTier = 'C'
+    if (idx === 0 || sharePct <= 80) abcTier = 'A'
+    else if (sharePct <= 95) abcTier = 'B'
+    result[entry.item.id] = {
+      abcTier,
+      basisValue: Math.round(entry.basisValue * 100) / 100,
+      cumulativeSharePct: Math.round(sharePct * 10) / 10,
+      soldUnits: entry.soldUnits,
+    }
+  }
+  return result
+}
+
+export function validateSplitPayments(payments = [], totalAmount = 0) {
+  const due = Math.round(Math.max(0, Number(totalAmount || 0)) * 100) / 100
+  if (due <= 0) {
+    return { valid: false, error: 'Sale total must be greater than zero.', normalizedPayments: [], totalTendered: 0, changeDue: 0, primaryMethod: 'cash' }
+  }
+  const allowed = ['cash', 'mobile_money_reference', 'bank_reference', 'card_reference', 'credit']
+  const list = Array.isArray(payments) ? payments.filter(p => Number(p?.amount || 0) > 0) : []
+  if (!list.length) {
+    return { valid: false, error: 'At least one positive payment tender line is required.', normalizedPayments: [], totalTendered: 0, changeDue: 0, primaryMethod: 'cash' }
+  }
+
+  let totalTendered = 0
+  let cashTendered = 0
+  const normalizedPayments = []
+  for (const row of list) {
+    const method = allowed.includes(row.method) ? row.method : 'cash'
+    const amount = Math.round(Number(row.amount || 0) * 100) / 100
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { valid: false, error: 'Each split tender line must be positive.', normalizedPayments: [], totalTendered: 0, changeDue: 0, primaryMethod: 'cash' }
+    }
+    if (method === 'cash') cashTendered += amount
+    totalTendered = Math.round((totalTendered + amount) * 100) / 100
+    normalizedPayments.push({
+      method,
+      amount,
+      reference: String(row.reference || '').trim().slice(0, 80),
+    })
+  }
+
+  if (totalTendered + 0.005 < due) {
+    return {
+      valid: false,
+      error: `Split tenders (KES ${totalTendered}) are short of total KES ${due}.`,
+      normalizedPayments,
+      totalTendered,
+      changeDue: 0,
+      primaryMethod: normalizedPayments[0].method,
+    }
+  }
+
+  const changeDue = Math.round(Math.max(0, totalTendered - due) * 100) / 100
+  if (changeDue > cashTendered + 0.005) {
+    return {
+      valid: false,
+      error: 'Over-tender / change cannot exceed the cash tender portion.',
+      normalizedPayments,
+      totalTendered,
+      changeDue,
+      primaryMethod: normalizedPayments[0].method,
+    }
+  }
+
+  // Allocate net revenue settlement per tender after cash change return
+  const settledPayments = normalizedPayments.map(p => ({ ...p }))
+  if (changeDue > 0) {
+    const cashIdx = settledPayments.findIndex(p => p.method === 'cash')
+    if (cashIdx >= 0) {
+      settledPayments[cashIdx].amount = Math.round(Math.max(0, settledPayments[cashIdx].amount - changeDue) * 100) / 100
+    }
+  }
+
+  return {
+    valid: true,
+    error: null,
+    normalizedPayments: settledPayments.filter(p => p.amount > 0),
+    totalTendered,
+    changeDue,
+    primaryMethod: normalizedPayments.length > 1 ? 'split' : normalizedPayments[0].method,
+  }
+}
+
+export function detectOutboxConflict({ queuedSale, inventory = [], revokedDeviceIds = [] }) {
+  const reasons = []
+  if (!queuedSale) return { hasConflict: false, reasons }
+
+  if (queuedSale.deviceId && Array.isArray(revokedDeviceIds) && revokedDeviceIds.includes(queuedSale.deviceId)) {
+    reasons.push(`Device ${queuedSale.deviceId} was revoked before sync — remote wipe required.`)
+  }
+
+  const lines = Array.isArray(queuedSale.cart) ? queuedSale.cart : []
+  for (const line of lines) {
+    const item = inventory.find(i => i.id === line.id || (line.partNumber && i.partNumber === line.partNumber))
+    if (!item) {
+      reasons.push(`SKU ${line.partNumber || line.id} no longer exists in branch stock.`)
+      continue
+    }
+    const { available } = computeAvailableStock(item)
+    const requested = Math.max(1, Math.trunc(Number(line.quantity || 1)))
+    if (available < requested) {
+      reasons.push(`Insufficient stock for ${item.partNumber}: requested ${requested}, available ${available}.`)
+    }
+    const snapshotPrice = Number(line.unitPriceSnapshot ?? line.retailPrice ?? 0)
+    const livePrice = Number(item.retailPrice ?? 0)
+    if (snapshotPrice > 0 && Math.abs(snapshotPrice - livePrice) > 0.01) {
+      reasons.push(`Price drift on ${item.partNumber}: queued at KES ${snapshotPrice}, current KES ${livePrice}.`)
+    }
+  }
+
+  return {
+    hasConflict: reasons.length > 0,
+    reasons,
+  }
+}
+
+export function scoreAndRankRfqs(quotes = [], suppliers = []) {
+  const supMap = new Map((Array.isArray(suppliers) ? suppliers : []).map(s => [s.id, s]))
+  return (Array.isArray(quotes) ? quotes : [])
+    .map(q => {
+      const sup = supMap.get(q.supplierId)
+      const supScore = sup ? evaluateSupplierScore(sup).score : 80
+      const unitPrice = Math.max(1, Number(q.quotedUnitPrice || 1))
+      const leadDays = Math.max(0, Number(q.leadTimeDays ?? sup?.leadTimeDays ?? 3))
+      const combinedScore = Math.round((supScore * 0.55 + Math.max(0, 100 - leadDays * 5) * 0.25 + (10000 / unitPrice) * 0.2) * 10) / 10
+      return { ...q, supplierScore: supScore, combinedScore }
+    })
+    .sort((a, b) => b.combinedScore - a.combinedScore)
+}
+
+export const CONTAINER_STAGE_ORDER = ['Booked', 'Cleared', 'In Transit', 'Arrived', 'Godown Received']
+
 

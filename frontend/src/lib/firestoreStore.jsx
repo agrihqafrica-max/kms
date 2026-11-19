@@ -20,8 +20,10 @@ import {
   classifyStockVelocity,
   computeGrnSettlement,
   computePosSaleTotals,
+  detectOutboxConflict,
   enqueueOfflineSale,
   evaluateChurnRisk,
+  validateSplitPayments,
 } from './kmsDomain.js'
 import {
   buildExpenseJournalEntry,
@@ -33,13 +35,46 @@ import {
   buildVarianceJournalEntry,
 } from './accountingEngine.js'
 import {
+  buildApiKeyMetadata,
   buildPackBreakMovements,
+  buildWorkspaceBackupPayload,
   computeShiftReconciliation,
   DEFAULT_FEATURE_FLAGS,
+  DEFAULT_TENANT_SETTINGS,
   evaluateNotificationDelivery,
   renderNotificationTemplate,
+  validateReturnActorSeparation,
+  verifyWorkspaceBackupPayload,
 } from './platformGovernance.js'
 import { BRANCHES, WorkspaceContext } from './workspaceContext.js'
+import { readSelection } from '../tenancy/selection.js'
+
+const SEED_BIKE_MODELS = [
+  { id: 'bike-boxer-bm150', make: 'Bajaj', model: 'Boxer BM150', variant: 'X / HD', engineCc: 150, yearRange: '2016–2026' },
+  { id: 'bike-tvs-hlx125', make: 'TVS', model: 'HLX 125', variant: '5-Gear / Gold', engineCc: 125, yearRange: '2018–2026' },
+  { id: 'bike-honda-ace125', make: 'Honda', model: 'Ace CB125', variant: 'D / Tuff', engineCc: 125, yearRange: '2017–2026' },
+  { id: 'bike-skygo-sg150', make: 'Skygo', model: 'SG150-8', variant: 'Boda Workhorse', engineCc: 150, yearRange: '2019–2026' },
+  { id: 'bike-hero-hunter150', make: 'Hero', model: 'Hunter 150', variant: 'TR', engineCc: 150, yearRange: '2020–2026' },
+]
+
+const SEED_LOCATIONS = [
+  { id: 'loc-cbd-counter', branchId: 'branch-cbd', name: 'CBD Front Counter & Rack A1', kind: 'Shop Shelf', code: 'A1-FRONT' },
+  { id: 'loc-cbd-godown', branchId: 'branch-cbd', name: 'Kirinyaga Upper Godown', kind: 'Godown', code: 'GODOWN-01' },
+  { id: 'loc-ind-bay', branchId: 'branch-ind', name: 'Industrial Area Bulk Pallet Bay', kind: 'Warehouse', code: 'IND-BAY-C' },
+  { id: 'loc-rider-van', branchId: 'branch-cbd', name: 'Nairobi West Rider Box (KMEB 412J)', kind: 'Transit Vehicle', code: 'VAN-01' },
+]
+
+const SEED_STAFF = [
+  { id: 'staff-owner-1', name: 'Grace Wambui', email: 'owner@kenyamoto.co.ke', role: 'owner', branchId: 'branch-cbd', status: 'Active', permissions: ['pos', 'inventory', 'procurement', 'finance', 'admin'] },
+  { id: 'staff-mgr-1', name: 'Daniel Otieno', email: 'manager.cbd@kenyamoto.co.ke', role: 'manager', branchId: 'branch-cbd', status: 'Active', permissions: ['pos', 'inventory', 'procurement', 'finance'] },
+  { id: 'staff-cash-1', name: 'Faith Muthoni', email: 'cashier1@kenyamoto.co.ke', role: 'cashier', branchId: 'branch-cbd', status: 'Active', permissions: ['pos'] },
+  { id: 'staff-store-1', name: 'Peter Njoroge', email: 'storekeeper@kenyamoto.co.ke', role: 'storekeeper', branchId: 'branch-ind', status: 'Active', permissions: ['inventory', 'procurement'] },
+]
+
+const SEED_DEVICES = [
+  { id: 'DEV-COUNTER-01', branchId: 'branch-cbd', deviceName: 'Kirinyaga Counter Terminal #1', capabilities: 'USB Barcode Scanner, 80mm Thermal Printer, Offline POS', status: 'Active', wipePending: false },
+  { id: 'DEV-GODOWN-02', branchId: 'branch-ind', deviceName: 'Industrial Area Receiving Tablet', capabilities: 'Barcode Scanner, Stock Count', status: 'Active', wipePending: false },
+]
 
 function toSortableValue(val) {
   if (val == null) return Date.now()
@@ -588,12 +623,13 @@ function makeSeedDocs(uid) {
 function makePreviewState(uid) {
   const inventory = makeSeedInventory(uid).map(item => ({ ...item, createdAt: new Date().toISOString() }))
   const seeds = makeSeedDocs(uid)
+  const saved = readSelection(uid)
   return {
     profile: {
       uid,
-      displayName: 'KenyaMoto Owner',
-      activeOrganizationId: 'org-kenyamoto',
-      activeBranchId: 'branch-cbd',
+      displayName: 'Kenya Motor Owner',
+      activeOrganizationId: saved.organizationId || 'org-kenyamotor',
+      activeBranchId: saved.branchId || 'branch-cbd',
       complianceMode: 'etims_vat',
     },
     inventory,
@@ -660,7 +696,7 @@ function makePreviewState(uid) {
       {
         id: 'thread-default',
         ownerId: uid,
-        title: 'KenyaMoto Supply Co-Pilot',
+        title: 'Kenya Motorcycle Spare Parts Co-Pilot',
         rolePreset: 'parts_specialist',
         modelMode: 'standard',
       },
@@ -671,7 +707,7 @@ function makePreviewState(uid) {
           id: 'msg-welcome',
           ownerId: uid,
           role: 'model',
-          text: 'Karibu KenyaMoto Supply Hub. Ask me about OEM part fitment (Boxer BM150, TVS HLX, Honda Ace), stock margins, Google Search market prices, or Google Maps nearby wholesalers.',
+          text: 'Karibu Kenya Motorcycle Spare Parts General. Ask me about OEM part fitment (Boxer BM150, TVS HLX, Honda Ace), stock margins, Google Search market prices, or Google Maps nearby wholesalers.',
           model: 'gemini-4-hydrogen',
           mode: 'standard',
         },
@@ -683,7 +719,7 @@ function makePreviewState(uid) {
 export function WorkspaceProvider({ children }) {
   const { session } = useAuth()
   const uid = session?.user?.id || null
-  const isFirebaseSession = Boolean(auth.currentUser && auth.currentUser.uid === uid)
+  const isFirebaseSession = Boolean(auth.currentUser && auth.currentUser.uid === uid && auth.currentUser.emailVerified)
 
   const [ready, setReady] = useState(false)
   const [asyncError, setAsyncError] = useState(null)
@@ -694,12 +730,15 @@ export function WorkspaceProvider({ children }) {
       setAsyncError(wrapped)
     }
   }, [])
-  const [profile, setProfile] = useState({
-    uid: uid || 'local-owner',
-    displayName: session?.user?.displayName || 'KenyaMoto Owner',
-    activeOrganizationId: 'org-kenyamoto',
-    activeBranchId: 'branch-cbd',
-    complianceMode: 'etims_vat',
+  const [profile, setProfile] = useState(() => {
+    const saved = readSelection(uid)
+    return {
+      uid: uid || 'local-owner',
+      displayName: session?.user?.displayName || 'Kenya Motor Owner',
+      activeOrganizationId: saved.organizationId || 'org-kenyamotor',
+      activeBranchId: saved.branchId || 'branch-cbd',
+      complianceMode: 'etims_vat',
+    }
   })
   const [inventory, setInventory] = useState([])
   const [stockMovements, setStockMovements] = useState([])
@@ -721,11 +760,96 @@ export function WorkspaceProvider({ children }) {
   const [journalEntries, setJournalEntries] = useState([])
   const [chatThreads, setChatThreads] = useState([])
   const [messagesByThread, setMessagesByThread] = useState({})
+  const [devices, setDevices] = useState(SEED_DEVICES)
+  const [approvalRequests, setApprovalRequests] = useState([])
+  const [purchaseRequisitions, setPurchaseRequisitions] = useState([])
+  const [supplierQuotes, setSupplierQuotes] = useState([])
+  const [inboundContainers, setInboundContainers] = useState([
+    {
+      id: 'cnt-seed-001',
+      branchId: 'branch-ind',
+      containerNumber: 'MSKU-492018-4',
+      originPort: 'Mundra Port (India)',
+      shippingLine: 'Maersk East Africa',
+      etaDate: '2026-11-28',
+      itemsSummary: 'Bajaj Boxer & TVS HLX OEM Chain Kits + Pistons (40ft HC)',
+      status: 'In Transit',
+    },
+  ])
+  const [supportTickets, setSupportTickets] = useState([])
+
+  const [tenantSettings, setTenantSettings] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`kms_tenant_settings_${uid || 'anon'}`) || 'null')
+      return saved ? { ...DEFAULT_TENANT_SETTINGS, ...saved } : DEFAULT_TENANT_SETTINGS
+    } catch {
+      return DEFAULT_TENANT_SETTINGS
+    }
+  })
+  const [branches, setBranches] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`kms_branches_${uid || 'anon'}`) || 'null')
+      return Array.isArray(saved) && saved.length ? saved : BRANCHES
+    } catch {
+      return BRANCHES
+    }
+  })
+  const [staffMembers, setStaffMembers] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`kms_staff_${uid || 'anon'}`) || 'null')
+      return Array.isArray(saved) && saved.length ? saved : SEED_STAFF
+    } catch {
+      return SEED_STAFF
+    }
+  })
+  const [locations, setLocations] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`kms_locations_${uid || 'anon'}`) || 'null')
+      return Array.isArray(saved) && saved.length ? saved : SEED_LOCATIONS
+    } catch {
+      return SEED_LOCATIONS
+    }
+  })
+  const [bikeModels, setBikeModels] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`kms_bikes_${uid || 'anon'}`) || 'null')
+      return Array.isArray(saved) && saved.length ? saved : SEED_BIKE_MODELS
+    } catch {
+      return SEED_BIKE_MODELS
+    }
+  })
+  const [fitmentMappings, setFitmentMappings] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`kms_fitment_${uid || 'anon'}`) || 'null')
+      return Array.isArray(saved) ? saved : [
+        { id: 'fit-1', partNumber: 'BJ-CSK-150', bikeModelId: 'bike-boxer-bm150', bikeLabel: 'Bajaj Boxer BM150', position: 'Rear Drivetrain', confidence: 'verified_fit', oemCode: '36DU1007' },
+        { id: 'fit-2', partNumber: 'TVS-BRK-125', bikeModelId: 'bike-tvs-hlx125', bikeLabel: 'TVS HLX 125', position: 'Rear Drum Brake', confidence: 'verified_fit', oemCode: 'N9110850' },
+      ]
+    } catch {
+      return []
+    }
+  })
+  const [apiKeys, setApiKeys] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`kms_apikeys_${uid || 'anon'}`) || 'null')
+      return Array.isArray(saved) && saved.length ? saved : [buildApiKeyMetadata('KMSP Mobile POS Sync Key', 'pos:sync inventory:read')]
+    } catch {
+      return []
+    }
+  })
+  const [trainingMode, setTrainingMode] = useState(false)
 
   const [offlineMode, setOfflineMode] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false)
   const [outbox, setOutbox] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(`kms_outbox_${uid || 'anon'}`) || '[]')
+    } catch {
+      return []
+    }
+  })
+  const [outboxConflicts, setOutboxConflicts] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`kms_outbox_conflicts_${uid || 'anon'}`) || '[]')
     } catch {
       return []
     }
@@ -760,6 +884,14 @@ export function WorkspaceProvider({ children }) {
   const activeBranchId = profile.activeBranchId || 'branch-cbd'
   const complianceMode = profile.complianceMode || 'etims_vat'
   const initializedRef = useRef(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`kms_outbox_conflicts_${uid || 'anon'}`, JSON.stringify(outboxConflicts))
+    } catch {
+      // ignore
+    }
+  }, [outboxConflicts, uid])
 
   useEffect(() => {
     try {
@@ -840,12 +972,12 @@ export function WorkspaceProvider({ children }) {
       }
 
       if (!userSnap.exists()) {
-        const displayName = (fbUser?.displayName?.trim() || fbUser?.email?.split('@')[0] || 'KenyaMoto Owner').slice(0, 120)
+        const displayName = (fbUser?.displayName?.trim() || fbUser?.email?.split('@')[0] || 'Kenya Motor Owner').slice(0, 120)
         try {
           await setDoc(userRef, {
             uid,
             displayName,
-            activeOrganizationId: 'org-kenyamoto',
+            activeOrganizationId: 'org-kenyamotor',
             activeBranchId: 'branch-cbd',
             complianceMode: 'etims_vat',
             createdAt: serverTimestamp(),
@@ -963,7 +1095,7 @@ export function WorkspaceProvider({ children }) {
             }
             batch.set(doc(db, 'users', uid, 'chatThreads', 'thread-default'), {
               ownerId: uid,
-              title: 'KenyaMoto Supply Co-Pilot',
+              title: 'Kenya Motorcycle Spare Parts Co-Pilot',
               rolePreset: 'parts_specialist',
               modelMode: 'standard',
               createdAt: serverTimestamp(),
@@ -1142,6 +1274,12 @@ export function WorkspaceProvider({ children }) {
       subscribeCol('notifications', setNotifications)
       subscribeCol('journalEntries', setJournalEntries)
       subscribeCol('chatThreads', setChatThreads, 'updatedAt', 'desc')
+      subscribeCol('devices', setDevices, 'deviceName', 'asc')
+      subscribeCol('approvalRequests', setApprovalRequests)
+      subscribeCol('purchaseRequisitions', setPurchaseRequisitions)
+      subscribeCol('supplierQuotes', setSupplierQuotes)
+      subscribeCol('inboundContainers', setInboundContainers)
+      subscribeCol('supportTickets', setSupportTickets)
 
       if (!cancelled) setReady(true)
     }
@@ -1181,11 +1319,19 @@ export function WorkspaceProvider({ children }) {
   )
 
   const setActiveBranch = useCallback(
-    async branchId => {
-      setProfile(prev => ({ ...prev, activeBranchId: branchId }))
+    async (branchId, organizationId = null) => {
+      setProfile(prev => ({
+        ...prev,
+        activeBranchId: branchId,
+        ...(organizationId ? { activeOrganizationId: organizationId } : {}),
+      }))
       if (!isFirebaseSession) return
       try {
-        await updateDoc(doc(db, 'users', uid), { activeBranchId: branchId, updatedAt: serverTimestamp() })
+        await updateDoc(doc(db, 'users', uid), {
+          activeBranchId: branchId,
+          ...(organizationId ? { activeOrganizationId: organizationId } : {}),
+          updatedAt: serverTimestamp(),
+        })
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`)
       }
@@ -1214,13 +1360,30 @@ export function WorkspaceProvider({ children }) {
   // Phase 1: POS Sale (Online Firestore batch OR Offline Outbox queue)
   const commitSalePayload = useCallback(
     async payload => {
-      const { cart, discountAmount, paymentMethod, paymentReference, customerName, branchId, mode, idempotencyKey } = payload
+      const {
+        cart,
+        discountAmount,
+        paymentMethod,
+        paymentReference,
+        payments = null,
+        deviceId = 'DEV-COUNTER-01',
+        priceSnapshotVersion = 'v1',
+        customerName,
+        branchId,
+        mode,
+        idempotencyKey,
+      } = payload
       const totals = computePosSaleTotals(cart, discountAmount, mode)
       const itemCount = Math.max(
         cart.reduce((sum, line) => sum + Math.trunc(Number(line.quantity || 1)), 0),
         1,
       )
       const etimsStatus = mode === 'etims_vat' ? 'Queued' : 'NotRequired'
+      const splitList = Array.isArray(payments) && payments.length ? payments : null
+      const effectiveMethod = splitList && splitList.length > 1 ? 'split' : splitList?.[0]?.method || paymentMethod
+      const paymentsSummary = splitList
+        ? splitList.map(p => `${p.method}: KES ${p.amount}${p.reference ? ` (${p.reference})` : ''}`).join(' + ').slice(0, 400)
+        : ''
 
       const totalCogs = cart.reduce((sum, line) => {
         const item = inventory.find(i => i.id === line.id)
@@ -1231,14 +1394,15 @@ export function WorkspaceProvider({ children }) {
         ? buildSaleJournalEntry({
             branchId,
             saleId: idempotencyKey,
-            paymentMethod,
+            paymentMethod: effectiveMethod,
+            payments: splitList,
             totalAmount: totals.totalAmount,
             vatAmount: totals.vatAmount,
             cogsAmount: totalCogs,
           })
         : null
 
-      if (!isFirebaseSession) {
+      if (!isFirebaseSession || trainingMode) {
         const saleId = idempotencyKey
         setInventory(prev =>
           prev.map(item => {
@@ -1255,11 +1419,15 @@ export function WorkspaceProvider({ children }) {
           discountAmount: totals.discountAmount,
           vatAmount: totals.vatAmount,
           totalAmount: totals.totalAmount,
-          paymentMethod,
+          paymentMethod: effectiveMethod,
+          ...(splitList ? { payments: splitList, paymentsSummary } : {}),
           ...(paymentReference ? { paymentReference } : {}),
           ...(customerName ? { customerName } : {}),
+          deviceId,
+          priceSnapshotVersion,
           itemCount,
           etimsStatus,
+          training: trainingMode,
           createdAt: new Date().toISOString(),
         }
         setSales(prev => [saleDoc, ...prev])
@@ -1275,7 +1443,7 @@ export function WorkspaceProvider({ children }) {
               movementType: 'sale',
               quantityDelta: -Math.trunc(Number(line.quantity)),
               unitCostSnapshot: Number(line.unitCost ?? item?.unitCost ?? 0),
-              reason: `POS sale ${saleId}`,
+              reason: `POS sale ${saleId}${trainingMode ? ' [TRAINING SANDBOX]' : ''}`,
               createdAt: new Date().toISOString(),
             }
           }),
@@ -1284,7 +1452,7 @@ export function WorkspaceProvider({ children }) {
         if (saleJe) {
           setJournalEntries(prev => [{ id: `je-${Date.now()}`, ownerId: uid, ...saleJe, createdAt: new Date().toISOString() }, ...prev])
         }
-        if (mode === 'etims_vat') {
+        if (mode === 'etims_vat' && !trainingMode) {
           setEtimsInvoices(prev => [
             {
               id: `etims-${Date.now()}`,
@@ -1299,7 +1467,7 @@ export function WorkspaceProvider({ children }) {
             ...prev,
           ])
         }
-        await appendAuditLog('POS_SALE_COMPLETED', 'POS', `Completed POS sale ${saleId} for KES ${totals.totalAmount}`, branchId)
+        await appendAuditLog('POS_SALE_COMPLETED', 'POS', `Completed POS sale ${saleId} (${effectiveMethod}) for KES ${totals.totalAmount}`, branchId)
         return saleDoc
       }
 
@@ -1314,8 +1482,11 @@ export function WorkspaceProvider({ children }) {
           discountAmount: totals.discountAmount,
           vatAmount: totals.vatAmount,
           totalAmount: totals.totalAmount,
-          paymentMethod,
+          paymentMethod: effectiveMethod,
           ...(paymentReference ? { paymentReference: paymentReference.slice(0, 120) } : {}),
+          ...(paymentsSummary ? { paymentsSummary } : {}),
+          priceSnapshotVersion: String(priceSnapshotVersion).slice(0, 40),
+          deviceId: String(deviceId).slice(0, 80),
           ...(customerName ? { customerName: customerName.slice(0, 200) } : {}),
           itemCount,
           etimsStatus,
@@ -1365,30 +1536,49 @@ export function WorkspaceProvider({ children }) {
         }
 
         await batch.commit()
-        await appendAuditLog('POS_SALE_COMPLETED', 'POS', `Completed POS sale ${saleId} for KES ${totals.totalAmount}`, branchId)
-        return { id: saleId, ...saleDoc }
+        await appendAuditLog('POS_SALE_COMPLETED', 'POS', `Completed POS sale ${saleId} (${effectiveMethod}) for KES ${totals.totalAmount}`, branchId)
+        return { id: saleId, ...saleDoc, ...(splitList ? { payments: splitList, paymentsSummary } : {}) }
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, `users/${uid}/sales`)
       }
     },
-    [uid, isFirebaseSession, inventory, appendAuditLog],
+    [uid, isFirebaseSession, trainingMode, inventory, appendAuditLog],
   )
 
   const completePosCheckout = useCallback(
-    async ({ cart, discountAmount = 0, paymentMethod = 'cash', paymentReference = '', customerName = '' }) => {
+    async ({ cart, discountAmount = 0, paymentMethod = 'cash', paymentReference = '', payments = null, customerName = '' }) => {
+      const activeDevice = devices.find(d => d.branchId === activeBranchId && d.status === 'Active') || devices[0]
+      if (activeDevice && (activeDevice.status === 'Revoked' || activeDevice.wipePending)) {
+        throw new Error(`Device ${activeDevice.id} is revoked. Re-enroll an active POS device in Network -> Governance.`)
+      }
       const idempotencyKey = `sale-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      const totals = computePosSaleTotals(cart, discountAmount, complianceMode)
+
+      let normalizedPayments = null
+      let resolvedMethod = paymentMethod
+      if (Array.isArray(payments) && payments.length) {
+        const splitCheck = validateSplitPayments(payments, totals.totalAmount)
+        if (!splitCheck.valid) throw new Error(splitCheck.error)
+        normalizedPayments = splitCheck.normalizedPayments
+        resolvedMethod = splitCheck.primaryMethod
+      }
+
       const payload = {
         idempotencyKey,
+        deviceId: activeDevice?.id || 'DEV-COUNTER-01',
+        priceSnapshotVersion: `pv-${new Date().toISOString().slice(0, 10)}`,
         cart: cart.map(row => ({
           id: row.id,
           partName: row.partName || row.part_name,
           partNumber: row.partNumber || row.part_number,
           retailPrice: Number(row.retailPrice ?? row.retail_price),
+          unitPriceSnapshot: Number(row.retailPrice ?? row.retail_price),
           stockQuantity: Number(row.stockQuantity ?? row.stock_quantity),
           quantity: Math.trunc(Number(row.quantity || 1)),
         })),
         discountAmount: Number(discountAmount || 0),
-        paymentMethod,
+        paymentMethod: resolvedMethod,
+        payments: normalizedPayments,
         paymentReference: paymentReference.trim(),
         customerName: customerName.trim(),
         branchId: activeBranchId,
@@ -1404,20 +1594,28 @@ export function WorkspaceProvider({ children }) {
             return { ...item, stockQuantity: Math.max(0, Number(item.stockQuantity) - line.quantity) }
           }),
         )
-        return { id: idempotencyKey, offlineQueued: true, totals: computePosSaleTotals(payload.cart, payload.discountAmount, complianceMode) }
+        return { id: idempotencyKey, offlineQueued: true, totals }
       }
 
       const saved = await commitSalePayload(payload)
-      return { ...saved, offlineQueued: false, totals: computePosSaleTotals(payload.cart, payload.discountAmount, complianceMode) }
+      return { ...saved, offlineQueued: false, totals }
     },
-    [activeBranchId, complianceMode, offlineMode, commitSalePayload],
+    [activeBranchId, complianceMode, offlineMode, devices, commitSalePayload],
   )
 
   const syncOutbox = useCallback(async () => {
-    if (offlineMode || !outbox.length) return { synced: 0 }
+    if (offlineMode || !outbox.length) return { synced: 0, conflicts: 0 }
     let synced = 0
     const remaining = []
+    const newConflicts = []
+    const revokedDeviceIds = devices.filter(d => d.status === 'Revoked' || d.wipePending).map(d => d.id)
+
     for (const queued of outbox) {
+      const check = detectOutboxConflict({ queuedSale: queued, inventory, revokedDeviceIds })
+      if (check.hasConflict) {
+        newConflicts.push({ ...queued, syncStatus: 'conflict', conflictReasons: check.reasons })
+        continue
+      }
       try {
         await commitSalePayload(queued)
         synced += 1
@@ -1425,9 +1623,34 @@ export function WorkspaceProvider({ children }) {
         remaining.push(queued)
       }
     }
+    if (newConflicts.length) {
+      setOutboxConflicts(prev => [...newConflicts, ...prev])
+      await appendAuditLog('OUTBOX_SYNC_CONFLICT', 'Offline Sync', `Moved ${newConflicts.length} conflicted sale(s) to conflict resolution queue.`)
+    }
     setOutbox(remaining)
-    return { synced }
-  }, [offlineMode, outbox, commitSalePayload])
+    return { synced, conflicts: newConflicts.length }
+  }, [offlineMode, outbox, devices, inventory, commitSalePayload, appendAuditLog])
+
+  const resolveOutboxConflict = useCallback(
+    async (idempotencyKey, action = 'accept_current') => {
+      const target = outboxConflicts.find(c => c.idempotencyKey === idempotencyKey)
+      if (!target) return
+      if (action === 'discard') {
+        setOutboxConflicts(prev => prev.filter(c => c.idempotencyKey !== idempotencyKey))
+        await appendAuditLog('OUTBOX_CONFLICT_DISCARDED', 'Offline Sync', `Discarded conflicted offline sale ${idempotencyKey}`)
+        return
+      }
+      const repricedCart = (target.cart || []).map(line => {
+        const live = inventory.find(i => i.id === line.id)
+        if (!live) return line
+        return { ...line, retailPrice: Number(live.retailPrice), unitPriceSnapshot: Number(live.retailPrice) }
+      })
+      await commitSalePayload({ ...target, cart: repricedCart })
+      setOutboxConflicts(prev => prev.filter(c => c.idempotencyKey !== idempotencyKey))
+      await appendAuditLog('OUTBOX_CONFLICT_RESOLVED', 'Offline Sync', `Resolved & synced offline sale ${idempotencyKey} at current branch pricing.`)
+    },
+    [outboxConflicts, inventory, commitSalePayload, appendAuditLog],
+  )
 
   // Auto-sync when back online
   useEffect(() => {
@@ -2364,7 +2587,7 @@ export function WorkspaceProvider({ children }) {
         if (!snap.exists()) {
           await setDoc(threadRef, {
             ownerId: uid,
-            title: 'KenyaMoto Supply Co-Pilot',
+            title: 'Kenya Motorcycle Spare Parts General Co-Pilot',
             rolePreset: 'parts_specialist',
             modelMode: mode || 'standard',
             createdAt: serverTimestamp(),
@@ -2539,9 +2762,10 @@ export function WorkspaceProvider({ children }) {
   }, [uid, isFirebaseSession, notifications])
 
   const submitSalesReturn = useCallback(
-    async ({ saleId = '', itemId, quantity = 1, refundAmount, refundMethod = 'cash', reason }) => {
+    async ({ saleId = '', itemId, quantity = 1, refundAmount, refundMethod = 'cash', reason, requestedBy = '' }) => {
       const item = inventory.find(i => i.id === itemId)
       if (!item) throw new Error('Returned SKU not found on active workspace.')
+      const actor = String(requestedBy || session?.user?.displayName || session?.user?.email || 'Counter Cashier').slice(0, 120)
       const retDoc = {
         ownerId: uid,
         branchId: item.branchId,
@@ -2552,30 +2776,42 @@ export function WorkspaceProvider({ children }) {
         refundAmount: Math.max(0, Number(refundAmount || 0)),
         refundMethod,
         reason: String(reason || 'Customer return').trim().slice(0, 300),
+        requestedBy: actor,
         status: 'PendingApproval',
       }
       if (!isFirebaseSession) {
         const local = { id: `ret-${Date.now()}`, ...retDoc, createdAt: new Date().toISOString() }
         setSalesReturns(prev => [local, ...prev])
-        await appendAuditLog('SALES_RETURN_STAGED', 'POS', `Staged return of ${retDoc.quantity}x ${retDoc.partNumber} (KES ${retDoc.refundAmount})`)
+        await appendAuditLog('SALES_RETURN_STAGED', 'POS', `Staged return of ${retDoc.quantity}x ${retDoc.partNumber} (KES ${retDoc.refundAmount}) by ${actor}`)
         return local
       }
       try {
         const ref = doc(collection(db, 'users', uid, 'salesReturns'))
         await setDoc(ref, { ...retDoc, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
-        await appendAuditLog('SALES_RETURN_STAGED', 'POS', `Staged return of ${retDoc.quantity}x ${retDoc.partNumber} (KES ${retDoc.refundAmount})`)
+        await appendAuditLog('SALES_RETURN_STAGED', 'POS', `Staged return of ${retDoc.quantity}x ${retDoc.partNumber} (KES ${retDoc.refundAmount}) by ${actor}`)
         return { id: ref.id, ...retDoc }
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, `users/${uid}/salesReturns`)
       }
     },
-    [uid, isFirebaseSession, inventory, appendAuditLog],
+    [uid, isFirebaseSession, session, inventory, appendAuditLog],
   )
 
   const resolveSalesReturn = useCallback(
-    async (returnId, approve) => {
+    async (returnId, approve, { approverName = '', approverRole = 'owner' } = {}) => {
       const target = salesReturns.find(r => r.id === returnId)
       if (!target || target.status !== 'PendingApproval') return
+      const resolvedActor = String(approverName || session?.user?.displayName || session?.user?.email || 'Branch Manager').slice(0, 120)
+      if (approve) {
+        const sod = validateReturnActorSeparation({
+          requestedBy: target.requestedBy,
+          approverName: resolvedActor,
+          role: approverRole,
+        })
+        if (!sod.allowed) {
+          throw new Error(sod.reason)
+        }
+      }
       const nextStatus = approve ? 'Approved' : 'Rejected'
       const item = inventory.find(i => i.id === target.itemId)
       const restockCost = item ? Number(item.unitCost || 0) * target.quantity : 0
@@ -2591,7 +2827,7 @@ export function WorkspaceProvider({ children }) {
         : null
 
       if (!isFirebaseSession) {
-        setSalesReturns(prev => prev.map(r => (r.id === returnId ? { ...r, status: nextStatus } : r)))
+        setSalesReturns(prev => prev.map(r => (r.id === returnId ? { ...r, status: nextStatus, approvedBy: resolvedActor } : r)))
         if (approve && item) {
           const nextQty = Math.trunc(Number(item.stockQuantity) + Number(target.quantity))
           setInventory(prev => prev.map(i => (i.id === item.id ? { ...i, stockQuantity: nextQty } : i)))
@@ -2620,7 +2856,7 @@ export function WorkspaceProvider({ children }) {
             vars: { partNumber: target.partNumber, refundAmount: target.refundAmount, refundMethod: target.refundMethod },
           })
         }
-        await appendAuditLog('SALES_RETURN_RESOLVED', 'POS', `Return ${target.partNumber} ${nextStatus.toLowerCase()} (KES ${target.refundAmount})`)
+        await appendAuditLog('SALES_RETURN_RESOLVED', 'POS', `Return ${target.partNumber} ${nextStatus.toLowerCase()} by ${resolvedActor} (KES ${target.refundAmount})`)
         return
       }
 
@@ -2628,6 +2864,7 @@ export function WorkspaceProvider({ children }) {
         const batch = writeBatch(db)
         batch.update(doc(db, 'users', uid, 'salesReturns', returnId), {
           status: nextStatus,
+          approvedBy: resolvedActor,
           updatedAt: serverTimestamp(),
         })
         if (approve && item) {
@@ -2662,12 +2899,12 @@ export function WorkspaceProvider({ children }) {
             vars: { partNumber: target.partNumber, refundAmount: target.refundAmount, refundMethod: target.refundMethod },
           })
         }
-        await appendAuditLog('SALES_RETURN_RESOLVED', 'POS', `Return ${target.partNumber} ${nextStatus.toLowerCase()} (KES ${target.refundAmount})`)
+        await appendAuditLog('SALES_RETURN_RESOLVED', 'POS', `Return ${target.partNumber} ${nextStatus.toLowerCase()} by ${resolvedActor} (KES ${target.refundAmount})`)
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `users/${uid}/salesReturns/${returnId}`)
       }
     },
-    [uid, isFirebaseSession, salesReturns, inventory, appendAuditLog, sendWorkspaceNotification],
+    [uid, isFirebaseSession, session, salesReturns, inventory, appendAuditLog, sendWorkspaceNotification],
   )
 
   const openDrawerShift = useCallback(
@@ -2969,6 +3206,550 @@ export function WorkspaceProvider({ children }) {
     [uid, isFirebaseSession, purchaseOrders, inventory, appendAuditLog],
   )
 
+  const updateTenantSettings = useCallback(
+    next => {
+      setTenantSettings(prev => {
+        const merged = { ...prev, ...next }
+        try {
+          localStorage.setItem(`kms_tenant_settings_${uid || 'anon'}`, JSON.stringify(merged))
+        } catch {
+          // ignore
+        }
+        void appendAuditLog('TENANT_SETTINGS_UPDATED', 'Governance', `Updated business profile & workspace settings (${merged.businessName}, ${merged.tenantStatus})`)
+        return merged
+      })
+    },
+    [uid, appendAuditLog],
+  )
+
+  const addOrUpdateBranch = useCallback(
+    branch => {
+      const id = String(branch.id || `branch-${Date.now().toString(36)}`).replace(/[^a-zA-Z0-9_-]/g, '')
+      const record = {
+        id,
+        organizationId: branch.organizationId || profile.activeOrganizationId || 'org-kenyamotor',
+        name: String(branch.name || 'New Branch').trim().slice(0, 120),
+        area: String(branch.area || 'Kenya').trim().slice(0, 120),
+        status: branch.status || 'Active',
+      }
+      setBranches(prev => {
+        const next = prev.some(b => b.id === id) ? prev.map(b => (b.id === id ? record : b)) : [...prev, record]
+        try {
+          localStorage.setItem(`kms_branches_${uid || 'anon'}`, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      void appendAuditLog('BRANCH_SAVED', 'Governance', `Saved branch ${record.name} (${record.status})`)
+      return record
+    },
+    [uid, profile.activeOrganizationId, appendAuditLog],
+  )
+
+  const addOrUpdateStaffMember = useCallback(
+    staff => {
+      const id = String(staff.id || `staff-${Date.now().toString(36)}`)
+      const record = {
+        id,
+        name: String(staff.name || '').trim().slice(0, 120),
+        email: String(staff.email || '').trim().slice(0, 120),
+        role: staff.role || 'cashier',
+        branchId: staff.branchId || activeBranchId,
+        status: staff.status || 'Active',
+        permissions: Array.isArray(staff.permissions) ? staff.permissions : ['pos'],
+      }
+      setStaffMembers(prev => {
+        const next = prev.some(s => s.id === id) ? prev.map(s => (s.id === id ? record : s)) : [record, ...prev]
+        try {
+          localStorage.setItem(`kms_staff_${uid || 'anon'}`, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      void appendAuditLog('STAFF_UPDATED', 'Governance', `Staff ${record.name} (${record.role}) -> ${record.status}`)
+      return record
+    },
+    [uid, activeBranchId, appendAuditLog],
+  )
+
+  const enrollDevice = useCallback(
+    async ({ deviceName, capabilities = 'Barcode Scanner, Offline POS', branchId = activeBranchId }) => {
+      const cleanName = String(deviceName || '').trim().slice(0, 120)
+      if (!cleanName) throw new Error('Device name is required.')
+      const docData = {
+        ownerId: uid,
+        branchId,
+        deviceName: cleanName,
+        capabilities: String(capabilities).slice(0, 200),
+        status: 'Active',
+        wipePending: false,
+      }
+      if (!isFirebaseSession) {
+        const local = { id: `DEV-${Date.now().toString(36).toUpperCase()}`, ...docData, createdAt: new Date().toISOString() }
+        setDevices(prev => [local, ...prev])
+        await appendAuditLog('DEVICE_ENROLLED', 'Security', `Enrolled POS device ${local.deviceName} (${local.id})`)
+        return local
+      }
+      try {
+        const ref = doc(collection(db, 'users', uid, 'devices'))
+        await setDoc(ref, { ...docData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+        await appendAuditLog('DEVICE_ENROLLED', 'Security', `Enrolled POS device ${cleanName}`)
+        return { id: ref.id, ...docData }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/devices`)
+      }
+    },
+    [uid, activeBranchId, isFirebaseSession, appendAuditLog],
+  )
+
+  const revokeDevice = useCallback(
+    async deviceId => {
+      const target = devices.find(d => d.id === deviceId)
+      if (!target) return
+      if (!isFirebaseSession || deviceId.startsWith('DEV-')) {
+        setDevices(prev => prev.map(d => (d.id === deviceId ? { ...d, status: 'Revoked', wipePending: true } : d)))
+        await appendAuditLog('DEVICE_REVOKED_WIPE', 'Security', `Revoked device ${target.deviceName} and flagged remote offline wipe.`)
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'users', uid, 'devices', deviceId), {
+          status: 'Revoked',
+          wipePending: true,
+          updatedAt: serverTimestamp(),
+        })
+        await appendAuditLog('DEVICE_REVOKED_WIPE', 'Security', `Revoked device ${target.deviceName} and flagged remote offline wipe.`)
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}/devices/${deviceId}`)
+      }
+    },
+    [uid, isFirebaseSession, devices, appendAuditLog],
+  )
+
+  const addLocation = useCallback(
+    loc => {
+      const record = {
+        id: `loc-${Date.now().toString(36)}`,
+        branchId: loc.branchId || activeBranchId,
+        name: String(loc.name || '').trim().slice(0, 120),
+        kind: loc.kind || 'Shop Shelf',
+        code: String(loc.code || 'BIN-NEW').trim().toUpperCase().slice(0, 40),
+      }
+      setLocations(prev => {
+        const next = [record, ...prev]
+        try {
+          localStorage.setItem(`kms_locations_${uid || 'anon'}`, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      void appendAuditLog('LOCATION_ADDED', 'Inventory', `Added storage location ${record.code} (${record.kind})`)
+      return record
+    },
+    [uid, activeBranchId, appendAuditLog],
+  )
+
+  const addBikeModel = useCallback(
+    bike => {
+      const record = {
+        id: `bike-${Date.now().toString(36)}`,
+        make: String(bike.make || '').trim().slice(0, 80),
+        model: String(bike.model || '').trim().slice(0, 80),
+        variant: String(bike.variant || '').trim().slice(0, 80),
+        engineCc: Number(bike.engineCc || 150),
+        yearRange: String(bike.yearRange || '2020–2026').slice(0, 30),
+      }
+      setBikeModels(prev => {
+        const next = [record, ...prev]
+        try {
+          localStorage.setItem(`kms_bikes_${uid || 'anon'}`, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      void appendAuditLog('BIKE_MODEL_ADDED', 'Catalogue', `Added bike model ${record.make} ${record.model}`)
+      return record
+    },
+    [uid, appendAuditLog],
+  )
+
+  const addFitmentMapping = useCallback(
+    mapping => {
+      const bike = bikeModels.find(b => b.id === mapping.bikeModelId)
+      const record = {
+        id: `fit-${Date.now().toString(36)}`,
+        partNumber: String(mapping.partNumber || '').trim().slice(0, 100),
+        bikeModelId: mapping.bikeModelId || '',
+        bikeLabel: bike ? `${bike.make} ${bike.model}` : String(mapping.bikeLabel || 'Universal'),
+        position: String(mapping.position || 'Standard').trim().slice(0, 80),
+        confidence: mapping.confidence || 'verified_fit',
+        oemCode: String(mapping.oemCode || '').trim().slice(0, 80),
+      }
+      setFitmentMappings(prev => {
+        const next = [record, ...prev]
+        try {
+          localStorage.setItem(`kms_fitment_${uid || 'anon'}`, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      void appendAuditLog('FITMENT_MAPPED', 'Catalogue', `Mapped ${record.partNumber} -> ${record.bikeLabel} (${record.confidence})`)
+      return record
+    },
+    [uid, bikeModels, appendAuditLog],
+  )
+
+  const requestApproval = useCallback(
+    async ({ requestType, summary, requestedRole = 'cashier', payload = {} }) => {
+      const actor = String(session?.user?.displayName || session?.user?.email || 'Operator').slice(0, 120)
+      const reqDoc = {
+        ownerId: uid,
+        branchId: activeBranchId,
+        requestType,
+        summary: String(summary).trim().slice(0, 300),
+        requestedBy: actor,
+        requestedRole: String(requestedRole).slice(0, 40),
+        payloadJson: JSON.stringify(payload).slice(0, 2000),
+        status: 'PendingApproval',
+      }
+      if (!isFirebaseSession) {
+        const local = { id: `apr-${Date.now()}`, ...reqDoc, createdAt: new Date().toISOString() }
+        setApprovalRequests(prev => [local, ...prev])
+        await appendAuditLog('APPROVAL_REQUESTED', 'Governance', `${requestType}: ${reqDoc.summary}`)
+        return local
+      }
+      try {
+        const ref = doc(collection(db, 'users', uid, 'approvalRequests'))
+        await setDoc(ref, { ...reqDoc, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+        await appendAuditLog('APPROVAL_REQUESTED', 'Governance', `${requestType}: ${reqDoc.summary}`)
+        return { id: ref.id, ...reqDoc }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/approvalRequests`)
+      }
+    },
+    [uid, activeBranchId, isFirebaseSession, session, appendAuditLog],
+  )
+
+  const resolveApprovalRequest = useCallback(
+    async (approvalId, approve, { approverRole = 'owner' } = {}) => {
+      const target = approvalRequests.find(a => a.id === approvalId)
+      if (!target || target.status !== 'PendingApproval') return
+      const resolvedBy = String(session?.user?.displayName || session?.user?.email || 'Manager').slice(0, 120)
+      if (approve && target.requestedBy === resolvedBy && approverRole !== 'owner') {
+        throw new Error('Separation of duties: requester cannot self-approve this request.')
+      }
+      const nextStatus = approve ? 'Approved' : 'Rejected'
+
+      if (approve && target.requestType === 'stock_adjustment') {
+        try {
+          const parsed = JSON.parse(target.payloadJson || '{}')
+          if (parsed.itemId && parsed.quantityDelta) {
+            await adjustInventoryStock(parsed.itemId, Number(parsed.quantityDelta), `Approved Adjustment (${parsed.reasonCode || 'correction'}): ${parsed.notes || ''}`)
+          }
+        } catch {
+          // skip malformed payload
+        }
+      }
+
+      if (!isFirebaseSession) {
+        setApprovalRequests(prev => prev.map(a => (a.id === approvalId ? { ...a, status: nextStatus, resolvedBy } : a)))
+        await appendAuditLog('APPROVAL_RESOLVED', 'Governance', `${target.requestType} ${nextStatus} by ${resolvedBy}`)
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'users', uid, 'approvalRequests', approvalId), {
+          status: nextStatus,
+          resolvedBy,
+          updatedAt: serverTimestamp(),
+        })
+        await appendAuditLog('APPROVAL_RESOLVED', 'Governance', `${target.requestType} ${nextStatus} by ${resolvedBy}`)
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}/approvalRequests/${approvalId}`)
+      }
+    },
+    [uid, isFirebaseSession, session, approvalRequests, adjustInventoryStock, appendAuditLog],
+  )
+
+  const createPurchaseRequisition = useCallback(
+    async ({ itemsSummary, estimatedCost = 0 }) => {
+      const actor = String(session?.user?.displayName || session?.user?.email || 'Storekeeper').slice(0, 120)
+      const docData = {
+        ownerId: uid,
+        branchId: activeBranchId,
+        reqNumber: `PR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(100 + Math.random() * 899))}`,
+        itemsSummary: String(itemsSummary || '').trim().slice(0, 400),
+        estimatedCost: Math.max(0, Number(estimatedCost || 0)),
+        requestedBy: actor,
+        status: 'PendingApproval',
+      }
+      if (!isFirebaseSession) {
+        const local = { id: `pr-${Date.now()}`, ...docData, createdAt: new Date().toISOString() }
+        setPurchaseRequisitions(prev => [local, ...prev])
+        await appendAuditLog('PR_CREATED', 'Procurement', `Created Purchase Requisition ${docData.reqNumber}`)
+        return local
+      }
+      try {
+        const ref = doc(collection(db, 'users', uid, 'purchaseRequisitions'))
+        await setDoc(ref, { ...docData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+        await appendAuditLog('PR_CREATED', 'Procurement', `Created Purchase Requisition ${docData.reqNumber}`)
+        return { id: ref.id, ...docData }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/purchaseRequisitions`)
+      }
+    },
+    [uid, activeBranchId, isFirebaseSession, session, appendAuditLog],
+  )
+
+  const resolvePurchaseRequisition = useCallback(
+    async (reqId, nextStatus, supplierName = '') => {
+      const target = purchaseRequisitions.find(r => r.id === reqId)
+      if (!target) return
+      if (nextStatus === 'ConvertedToPO') {
+        await createPurchaseOrder({
+          supplierName: supplierName || suppliers[0]?.supplierName || 'Nairobi Spares Importers Ltd',
+          itemsSummary: target.itemsSummary,
+          totalCost: target.estimatedCost,
+          orderedQty: 10,
+        })
+      }
+      if (!isFirebaseSession) {
+        setPurchaseRequisitions(prev => prev.map(r => (r.id === reqId ? { ...r, status: nextStatus } : r)))
+        await appendAuditLog('PR_UPDATED', 'Procurement', `Purchase Requisition ${target.reqNumber} -> ${nextStatus}`)
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'users', uid, 'purchaseRequisitions', reqId), {
+          status: nextStatus,
+          updatedAt: serverTimestamp(),
+        })
+        await appendAuditLog('PR_UPDATED', 'Procurement', `Purchase Requisition ${target.reqNumber} -> ${nextStatus}`)
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}/purchaseRequisitions/${reqId}`)
+      }
+    },
+    [uid, isFirebaseSession, purchaseRequisitions, suppliers, createPurchaseOrder, appendAuditLog],
+  )
+
+  const createSupplierQuote = useCallback(
+    async ({ rfqRef, supplierId, partNumber, quotedUnitPrice, leadTimeDays = 2, paymentTerms = 'Net 30' }) => {
+      const sup = suppliers.find(s => s.id === supplierId) || suppliers[0]
+      const docData = {
+        ownerId: uid,
+        branchId: activeBranchId,
+        rfqRef: String(rfqRef || `RFQ-${Date.now().toString().slice(-4)}`).trim().slice(0, 80),
+        supplierId: sup?.id || String(supplierId || 'sup-default'),
+        supplierName: sup?.supplierName || 'Supplier',
+        partNumber: String(partNumber || '').trim().slice(0, 100),
+        quotedUnitPrice: Math.max(1, Number(quotedUnitPrice || 1)),
+        leadTimeDays: Math.max(0, Math.trunc(Number(leadTimeDays || 2))),
+        paymentTerms: String(paymentTerms || 'Net 30').slice(0, 80),
+        status: 'Submitted',
+      }
+      if (!isFirebaseSession) {
+        const local = { id: `rfq-${Date.now()}`, ...docData, createdAt: new Date().toISOString() }
+        setSupplierQuotes(prev => [local, ...prev])
+        await appendAuditLog('RFQ_SUBMITTED', 'Procurement', `Logged quote ${docData.rfqRef} from ${docData.supplierName} for ${docData.partNumber}`)
+        return local
+      }
+      try {
+        const ref = doc(collection(db, 'users', uid, 'supplierQuotes'))
+        await setDoc(ref, { ...docData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+        await appendAuditLog('RFQ_SUBMITTED', 'Procurement', `Logged quote ${docData.rfqRef} from ${docData.supplierName} for ${docData.partNumber}`)
+        return { id: ref.id, ...docData }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/supplierQuotes`)
+      }
+    },
+    [uid, activeBranchId, isFirebaseSession, suppliers, appendAuditLog],
+  )
+
+  const awardSupplierQuote = useCallback(
+    async (quoteId, qty = 10) => {
+      const quote = supplierQuotes.find(q => q.id === quoteId)
+      if (!quote || quote.status !== 'Submitted') return
+      await createPurchaseOrder({
+        supplierName: quote.supplierName,
+        itemsSummary: `${quote.partNumber} x${qty} (Awarded ${quote.rfqRef})`,
+        totalCost: Number(quote.quotedUnitPrice) * Math.max(1, Number(qty)),
+        orderedQty: Math.max(1, Math.trunc(Number(qty))),
+      })
+      if (!isFirebaseSession) {
+        setSupplierQuotes(prev => prev.map(q => (q.id === quoteId ? { ...q, status: 'Awarded' } : q)))
+        await appendAuditLog('RFQ_AWARDED', 'Procurement', `Awarded ${quote.rfqRef} to ${quote.supplierName} -> PO drafted.`)
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'users', uid, 'supplierQuotes', quoteId), {
+          status: 'Awarded',
+          updatedAt: serverTimestamp(),
+        })
+        await appendAuditLog('RFQ_AWARDED', 'Procurement', `Awarded ${quote.rfqRef} to ${quote.supplierName} -> PO drafted.`)
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}/supplierQuotes/${quoteId}`)
+      }
+    },
+    [uid, isFirebaseSession, supplierQuotes, createPurchaseOrder, appendAuditLog],
+  )
+
+  const createInboundContainer = useCallback(
+    async ({ containerNumber, originPort, shippingLine = '', etaDate = '', itemsSummary }) => {
+      const docData = {
+        ownerId: uid,
+        branchId: activeBranchId,
+        containerNumber: String(containerNumber || '').trim().toUpperCase().slice(0, 80),
+        originPort: String(originPort || '').trim().slice(0, 120),
+        shippingLine: String(shippingLine || '').trim().slice(0, 120),
+        etaDate: String(etaDate || '').trim().slice(0, 20),
+        itemsSummary: String(itemsSummary || '').trim().slice(0, 400),
+        status: 'Booked',
+      }
+      if (!isFirebaseSession) {
+        const local = { id: `cnt-${Date.now()}`, ...docData, createdAt: new Date().toISOString() }
+        setInboundContainers(prev => [local, ...prev])
+        await appendAuditLog('CONTAINER_BOOKED', 'Logistics', `Booked container ${docData.containerNumber} from ${docData.originPort}`)
+        return local
+      }
+      try {
+        const ref = doc(collection(db, 'users', uid, 'inboundContainers'))
+        await setDoc(ref, { ...docData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+        await appendAuditLog('CONTAINER_BOOKED', 'Logistics', `Booked container ${docData.containerNumber} from ${docData.originPort}`)
+        return { id: ref.id, ...docData }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/inboundContainers`)
+      }
+    },
+    [uid, activeBranchId, isFirebaseSession, appendAuditLog],
+  )
+
+  const updateInboundContainer = useCallback(
+    async (containerId, nextStatus) => {
+      const target = inboundContainers.find(c => c.id === containerId)
+      if (!target) return
+      if (!isFirebaseSession || containerId.startsWith('cnt-seed')) {
+        setInboundContainers(prev => prev.map(c => (c.id === containerId ? { ...c, status: nextStatus } : c)))
+        await appendAuditLog('CONTAINER_STAGE_UPDATED', 'Logistics', `Container ${target.containerNumber} -> ${nextStatus}`)
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'users', uid, 'inboundContainers', containerId), {
+          status: nextStatus,
+          updatedAt: serverTimestamp(),
+        })
+        await appendAuditLog('CONTAINER_STAGE_UPDATED', 'Logistics', `Container ${target.containerNumber} -> ${nextStatus}`)
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}/inboundContainers/${containerId}`)
+      }
+    },
+    [uid, isFirebaseSession, inboundContainers, appendAuditLog],
+  )
+
+  const createSupportTicket = useCallback(
+    async ({ subject, category = 'Operations', priority = 'Normal', description }) => {
+      const docData = {
+        ownerId: uid,
+        branchId: activeBranchId,
+        subject: String(subject || '').trim().slice(0, 160),
+        category: String(category).slice(0, 80),
+        priority,
+        description: String(description || '').trim().slice(0, 600),
+        status: 'Open',
+      }
+      if (!isFirebaseSession) {
+        const local = { id: `tkt-${Date.now()}`, ...docData, createdAt: new Date().toISOString() }
+        setSupportTickets(prev => [local, ...prev])
+        await appendAuditLog('SUPPORT_TICKET_CREATED', 'Support', `Ticket: ${docData.subject} (${priority})`)
+        return local
+      }
+      try {
+        const ref = doc(collection(db, 'users', uid, 'supportTickets'))
+        await setDoc(ref, { ...docData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+        await appendAuditLog('SUPPORT_TICKET_CREATED', 'Support', `Ticket: ${docData.subject} (${priority})`)
+        return { id: ref.id, ...docData }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/supportTickets`)
+      }
+    },
+    [uid, activeBranchId, isFirebaseSession, appendAuditLog],
+  )
+
+  const resolveSupportTicket = useCallback(
+    async (ticketId, status = 'Resolved') => {
+      if (!isFirebaseSession) {
+        setSupportTickets(prev => prev.map(t => (t.id === ticketId ? { ...t, status } : t)))
+        await appendAuditLog('SUPPORT_TICKET_UPDATED', 'Support', `Ticket ${ticketId} -> ${status}`)
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'users', uid, 'supportTickets', ticketId), {
+          status,
+          updatedAt: serverTimestamp(),
+        })
+        await appendAuditLog('SUPPORT_TICKET_UPDATED', 'Support', `Ticket ${ticketId} -> ${status}`)
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}/supportTickets/${ticketId}`)
+      }
+    },
+    [uid, isFirebaseSession, appendAuditLog],
+  )
+
+  const createApiKey = useCallback(
+    (label, scope) => {
+      const created = buildApiKeyMetadata(label, scope)
+      setApiKeys(prev => {
+        const next = [created, ...prev]
+        try {
+          localStorage.setItem(`kms_apikeys_${uid || 'anon'}`, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      void appendAuditLog('API_KEY_GENERATED', 'Security', `Issued API key ${created.maskedPrefix} (${created.scope})`)
+      return created
+    },
+    [uid, appendAuditLog],
+  )
+
+  const revokeApiKey = useCallback(
+    keyId => {
+      setApiKeys(prev => {
+        const next = prev.map(k => (k.id === keyId ? { ...k, status: 'Revoked' } : k))
+        try {
+          localStorage.setItem(`kms_apikeys_${uid || 'anon'}`, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      void appendAuditLog('API_KEY_REVOKED', 'Security', `Revoked partner API key ${keyId}`)
+    },
+    [uid, appendAuditLog],
+  )
+
+  const exportWorkspaceBackup = useCallback(
+    () =>
+      buildWorkspaceBackupPayload({
+        tenantSettings,
+        branches,
+        inventory,
+        sales,
+        expenses,
+        journalEntries,
+        stockMovements,
+        purchaseOrders,
+        suppliers,
+        customers,
+        auditLogs,
+      }),
+    [tenantSettings, branches, inventory, sales, expenses, journalEntries, stockMovements, purchaseOrders, suppliers, customers, auditLogs],
+  )
+
+  const verifyBackupPayload = useCallback(payload => verifyWorkspaceBackupPayload(payload), [])
+
   const toggleFeatureFlag = useCallback(
     key => {
       setFeatureFlags(prev => {
@@ -3008,7 +3789,43 @@ export function WorkspaceProvider({ children }) {
       profile,
       activeBranchId,
       complianceMode,
-      branches: BRANCHES,
+      tenantSettings,
+      updateTenantSettings,
+      branches,
+      addOrUpdateBranch,
+      staffMembers,
+      addOrUpdateStaffMember,
+      devices,
+      enrollDevice,
+      revokeDevice,
+      locations,
+      addLocation,
+      bikeModels,
+      addBikeModel,
+      fitmentMappings,
+      addFitmentMapping,
+      approvalRequests,
+      requestApproval,
+      resolveApprovalRequest,
+      purchaseRequisitions,
+      createPurchaseRequisition,
+      resolvePurchaseRequisition,
+      supplierQuotes,
+      createSupplierQuote,
+      awardSupplierQuote,
+      inboundContainers,
+      createInboundContainer,
+      updateInboundContainer,
+      supportTickets,
+      createSupportTicket,
+      resolveSupportTicket,
+      apiKeys,
+      createApiKey,
+      revokeApiKey,
+      trainingMode,
+      setTrainingMode,
+      exportWorkspaceBackup,
+      verifyBackupPayload,
       inventory,
       stockMovements,
       purchaseOrders,
@@ -3032,7 +3849,9 @@ export function WorkspaceProvider({ children }) {
       offlineMode,
       setOfflineMode,
       outbox,
+      outboxConflicts,
       syncOutbox,
+      resolveOutboxConflict,
       agentControls,
       toggleAgentControl,
       featureFlags,
@@ -3088,6 +3907,42 @@ export function WorkspaceProvider({ children }) {
       profile,
       activeBranchId,
       complianceMode,
+      tenantSettings,
+      updateTenantSettings,
+      branches,
+      addOrUpdateBranch,
+      staffMembers,
+      addOrUpdateStaffMember,
+      devices,
+      enrollDevice,
+      revokeDevice,
+      locations,
+      addLocation,
+      bikeModels,
+      addBikeModel,
+      fitmentMappings,
+      addFitmentMapping,
+      approvalRequests,
+      requestApproval,
+      resolveApprovalRequest,
+      purchaseRequisitions,
+      createPurchaseRequisition,
+      resolvePurchaseRequisition,
+      supplierQuotes,
+      createSupplierQuote,
+      awardSupplierQuote,
+      inboundContainers,
+      createInboundContainer,
+      updateInboundContainer,
+      supportTickets,
+      createSupportTicket,
+      resolveSupportTicket,
+      apiKeys,
+      createApiKey,
+      revokeApiKey,
+      trainingMode,
+      exportWorkspaceBackup,
+      verifyBackupPayload,
       inventory,
       stockMovements,
       purchaseOrders,
@@ -3110,7 +3965,9 @@ export function WorkspaceProvider({ children }) {
       messagesByThread,
       offlineMode,
       outbox,
+      outboxConflicts,
       syncOutbox,
+      resolveOutboxConflict,
       agentControls,
       toggleAgentControl,
       featureFlags,

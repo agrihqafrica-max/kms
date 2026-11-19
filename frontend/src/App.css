@@ -1455,3 +1455,459 @@ textarea:focus {
   min-height: auto;
 }
 
+.section-subheading {
+  margin-top: 18px;
+}
+
+/* Multi-Method Auth & Dual Backend UI */
+.auth-company-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  max-width: 440px;
+}
+
+.auth-company-list strong {
+  font-size: 12.5px;
+  color: var(--text-h);
+}
+
+.auth-company-list ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.auth-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.backend-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  gap: 2px;
+}
+
+.backend-toggle button {
+  min-height: 28px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.backend-toggle button.active {
+  background: var(--surface);
+  color: var(--text-h);
+  border-color: var(--border);
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.auth-tabs button {
+  min-height: 32px;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.auth-tabs button.active {
+  background: var(--surface);
+  color: var(--text-h);
+  border-color: var(--border);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.check-row {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.check-row input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  min-height: auto;
+  margin: 0;
+}
+
+.login-submit-btn {
+  width: 100%;
+  min-height: 44px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  box-shadow: 0 2px 6px rgba(23, 96, 58, 0.22);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.oauth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.oauth-btn {
+  width: 100%;
+  min-height: 40px;
+  background: var(--surface);
+  border-color: var(--border-strong);
+  font-weight: 600;
+}
+
+.verify-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  margin-bottom: 14px;
+  background: var(--warn-bg);
+  border: 1px solid #fedf89;
+  border-radius: 8px;
+}
+
+.verify-banner strong {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-h);
+}
+
+/* Utility Spacing & Layout Helpers (zero inline styles) */
+.mt-xs { margin-top: 4px; }
+.mt-sm { margin-top: 8px; }
+.mt-md { margin-top: 12px; }
+.mt-lg { margin-top: 16px; }
+.mb-md { margin-bottom: 12px; }
+.w-full { width: 100%; }
+
+/* Training / Sandbox Banner (ADM-005) */
+.sandbox-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  color: #1e3a8a;
+  font-size: 12.5px;
+}
+
+/* Language Switcher */
+.lang-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+}
+
+.lang-toggle button {
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lang-toggle button.active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* PWA Install Modal (UX-001) */
+.pwa-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 20, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.pwa-modal {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 400px;
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  box-shadow: 0 18px 40px rgba(15, 23, 20, 0.25);
+}
+
+/* Floating Utility Dock (UX-004) */
+.floating-dock {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.dock-toggle {
+  background: #10261c;
+  color: #ffffff;
+  border-color: #1b3b2c;
+  box-shadow: 0 6px 18px rgba(15, 23, 20, 0.22);
+}
+
+.dock-toggle:not(:disabled):hover {
+  background: #1a3b2c;
+  border-color: var(--accent-lime);
+}
+
+.dock-panel {
+  width: 340px;
+  max-width: calc(100vw - 28px);
+  max-height: 75vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 14px 36px rgba(15, 23, 20, 0.2);
+  display: grid;
+  gap: 10px;
+}
+
+.dock-calc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.dock-calc-result {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  display: grid;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Split Tender & Thermal Receipt (POS-006 / POS-007) */
+.split-tender-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+
+.split-tender-row {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.thermal-receipt {
+  padding: 12px;
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.thermal-receipt-lines {
+  border-top: 1px dashed var(--border-strong);
+  border-bottom: 1px dashed var(--border-strong);
+  padding: 6px 0;
+  margin: 4px 0;
+  display: grid;
+  gap: 3px;
+}
+
+.thermal-receipt-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ABC Badges & Barcode Shelf Label Sheet (INV-017 / INV-021) */
+.abc-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.abc-badge-a {
+  background: #ecfdf3;
+  color: #067647;
+  border: 1px solid #abefc6;
+}
+
+.abc-badge-b {
+  background: #fffaeb;
+  color: #b54708;
+  border: 1px solid #fedf89;
+}
+
+.abc-badge-c {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.barcode-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.barcode-label-card {
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--surface);
+  display: grid;
+  gap: 4px;
+}
+
+.barcode-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 28px;
+  padding: 4px 0;
+}
+
+.barcode-bars span {
+  display: block;
+  background: #0f1f18;
+  width: 2px;
+}
+
+.barcode-bars span.wide {
+  width: 4px;
+}
+
+/* Container Stage Timeline (PRC-011) */
+.container-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+@media (max-width: 760px) {
+  .floating-dock {
+    right: 12px;
+    bottom: 66px;
+  }
+  .split-tender-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  .sidebar,
+  .topbar,
+  .mobile-nav,
+  .floating-dock,
+  .verify-banner,
+  .sandbox-banner,
+  .no-print {
+    display: none !important;
+  }
+  .app-shell {
+    display: block;
+  }
+  .app-shell main {
+    padding: 0;
+  }
+  .thermal-receipt {
+    max-width: 80mm;
+    border: 1px solid #000;
+    background: #fff;
+    color: #000;
+  }
+  .barcode-sheet {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+

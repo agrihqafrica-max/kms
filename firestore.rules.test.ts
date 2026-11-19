@@ -39,6 +39,13 @@ test('firestore.rules enforces Eight Pillars guards (isValidId, email_verified, 
   assert.match(rulesContent, /function isValidSalesReturn\(/);
   assert.match(rulesContent, /function isValidDrawerShift\(/);
   assert.match(rulesContent, /function isValidAppNotification\(/);
+  assert.match(rulesContent, /function isValidDeviceRecord\(/);
+  assert.match(rulesContent, /function isValidApprovalRequest\(/);
+  assert.match(rulesContent, /function isValidPurchaseRequisition\(/);
+  assert.match(rulesContent, /function isValidSupplierQuote\(/);
+  assert.match(rulesContent, /function isValidInboundContainer\(/);
+  assert.match(rulesContent, /function isValidSupportTicket\(/);
+  assert.match(rulesContent, /'split'/);
 });
 
 test('firestoreStore initial seed statuses conform to firestore.rules create invariants and avoid composite index queries', () => {

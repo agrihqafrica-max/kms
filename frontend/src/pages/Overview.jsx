@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTenant } from '../tenancy/context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney, nairobiDay } from '../lib/format.js'
 import { classifyStockVelocity } from '../lib/kmsDomain.js'
@@ -15,6 +16,7 @@ const WEEKLY_BARS = [
 ]
 
 export default function Overview() {
+  const { data: { context, memberships = [] } } = useTenant()
   const {
     activeBranchId,
     branches,
@@ -30,10 +32,18 @@ export default function Overview() {
   } = useWorkspace()
 
   const date = nairobiDay()
-  const activeBranch = branches.find(b => b.id === activeBranchId) || branches[0]
-  const branchItems = inventory.filter(i => i.branchId === activeBranchId)
-  const branchSales = sales.filter(s => s.branchId === activeBranchId)
-  const branchExpenses = expenses.filter(e => e.branchId === activeBranchId)
+  const targetBranchId = context.branch_id || activeBranchId
+  const membershipMatch = memberships.find(
+    m => m.organization_id === context.organization_id && (!targetBranchId || m.branch_id === targetBranchId),
+  )
+  const activeBranch =
+    branches.find(b => b.id === targetBranchId) ||
+    (membershipMatch
+      ? { id: membershipMatch.branch_id, name: membershipMatch.branch_name || context.organization_name }
+      : branches[0])
+  const branchItems = inventory.filter(i => i.branchId === targetBranchId)
+  const branchSales = sales.filter(s => s.branchId === targetBranchId)
+  const branchExpenses = expenses.filter(e => e.branchId === targetBranchId)
 
   const netSales = branchSales.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0)
   const expenseTotal = branchExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)

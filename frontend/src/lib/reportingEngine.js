@@ -1,7 +1,31 @@
-import { computeAvailableStock } from './kmsDomain.js'
+import { classifyAbcInventory, computeAvailableStock } from './kmsDomain.js'
 
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100
+}
+
+function rowTimestampMs(row) {
+  const raw = row?.createdAt
+  if (!raw) return null
+  if (typeof raw?.toDate === 'function') return raw.toDate().getTime()
+  const parsed = Date.parse(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function filterRowsByPeriod(rows = [], branchId = null, startDate = '', endDate = '') {
+  const startMs = startDate ? Date.parse(`${startDate}T00:00:00+03:00`) : null
+  const endMs = endDate ? Date.parse(`${endDate}T23:59:59+03:00`) : null
+  return (Array.isArray(rows) ? rows : []).filter(row => {
+    if (branchId && row?.branchId && row.branchId !== branchId) return false
+    if (startMs || endMs) {
+      const ts = rowTimestampMs(row)
+      if (ts !== null) {
+        if (startMs && ts < startMs) return false
+        if (endMs && ts > endMs) return false
+      }
+    }
+    return true
+  })
 }
 
 export function buildDailyBusinessSummary({
@@ -11,11 +35,13 @@ export function buildDailyBusinessSummary({
   etimsInvoices = [],
   journalEntries = [],
   branchId = null,
+  startDate = '',
+  endDate = '',
 }) {
-  const bSales = branchId ? sales.filter(s => s.branchId === branchId) : sales
-  const bExpenses = branchId ? expenses.filter(e => e.branchId === branchId) : expenses
-  const bReturns = branchId ? salesReturns.filter(r => r.branchId === branchId && r.status === 'Approved') : salesReturns
-  const bJournals = branchId ? journalEntries.filter(j => j.branchId === branchId) : journalEntries
+  const bSales = filterRowsByPeriod(sales, branchId, startDate, endDate)
+  const bExpenses = filterRowsByPeriod(expenses, branchId, startDate, endDate)
+  const bReturns = filterRowsByPeriod(salesReturns, branchId, startDate, endDate).filter(r => r.status === 'Approved')
+  const bJournals = filterRowsByPeriod(journalEntries, branchId, startDate, endDate)
 
   const grossSales = round2(bSales.reduce((s, row) => s + Number(row.totalAmount || 0), 0))
   const totalDiscounts = round2(bSales.reduce((s, row) => s + Number(row.discountAmount || 0), 0))
@@ -43,16 +69,22 @@ export function buildDailyBusinessSummary({
   }
 }
 
-export function buildSalesReport({ sales = [], salesReturns = [], branchId = null }) {
-  const bSales = branchId ? sales.filter(s => s.branchId === branchId) : sales
-  const bReturns = branchId ? salesReturns.filter(r => r.branchId === branchId && r.status === 'Approved') : salesReturns
+export function buildSalesReport({ sales = [], salesReturns = [], branchId = null, startDate = '', endDate = '', paymentMethod = 'all' }) {
+  let bSales = filterRowsByPeriod(sales, branchId, startDate, endDate)
+  if (paymentMethod && paymentMethod !== 'all') {
+    bSales = bSales.filter(s => s.paymentMethod === paymentMethod)
+  }
+  const bReturns = filterRowsByPeriod(salesReturns, branchId, startDate, endDate).filter(r => r.status === 'Approved')
 
   const byMethod = {}
   for (const s of bSales) {
-    const method = s.paymentMethod || 'cash'
-    if (!byMethod[method]) byMethod[method] = { method, count: 0, total: 0 }
-    byMethod[method].count += 1
-    byMethod[method].total = round2(byMethod[method].total + Number(s.totalAmount || 0))
+    const splitList = Array.isArray(s.payments) && s.payments.length ? s.payments : [{ method: s.paymentMethod || 'cash', amount: s.totalAmount }]
+    for (const part of splitList) {
+      const method = part.method || 'cash'
+      if (!byMethod[method]) byMethod[method] = { method, count: 0, total: 0 }
+      byMethod[method].count += 1
+      byMethod[method].total = round2(byMethod[method].total + Number(part.amount || 0))
+    }
   }
 
   return {
@@ -64,10 +96,10 @@ export function buildSalesReport({ sales = [], salesReturns = [], branchId = nul
   }
 }
 
-export function buildProfitCogsReport({ sales = [], expenses = [], stockMovements = [], inventory = [], branchId = null }) {
-  const bSales = branchId ? sales.filter(s => s.branchId === branchId) : sales
-  const bExpenses = branchId ? expenses.filter(e => e.branchId === branchId) : expenses
-  const bMovements = branchId ? stockMovements.filter(m => m.branchId === branchId) : stockMovements
+export function buildProfitCogsReport({ sales = [], expenses = [], stockMovements = [], inventory = [], branchId = null, startDate = '', endDate = '' }) {
+  const bSales = filterRowsByPeriod(sales, branchId, startDate, endDate)
+  const bExpenses = filterRowsByPeriod(expenses, branchId, startDate, endDate)
+  const bMovements = filterRowsByPeriod(stockMovements, branchId, startDate, endDate)
 
   const costByItemId = new Map(inventory.map(i => [i.id, Number(i.unitCost || 0)]))
   const cogs = round2(
@@ -98,8 +130,8 @@ export function buildProfitCogsReport({ sales = [], expenses = [], stockMovement
   }
 }
 
-export function buildCashReconciliationReport({ drawerShifts = [], branchId = null }) {
-  const bShifts = branchId ? drawerShifts.filter(sh => sh.branchId === branchId) : drawerShifts
+export function buildCashReconciliationReport({ drawerShifts = [], branchId = null, startDate = '', endDate = '' }) {
+  const bShifts = filterRowsByPeriod(drawerShifts, branchId, startDate, endDate)
   const totalVariance = round2(bShifts.reduce((sum, sh) => sum + Number(sh.variance || 0), 0))
   return {
     shifts: bShifts,
@@ -109,14 +141,19 @@ export function buildCashReconciliationReport({ drawerShifts = [], branchId = nu
   }
 }
 
-export function buildStockReport({ inventory = [], branchId = null }) {
+export function buildStockReport({ inventory = [], stockMovements = [], branchId = null }) {
   const bItems = branchId ? inventory.filter(i => i.branchId === branchId) : inventory
+  const abcMap = classifyAbcInventory(bItems, stockMovements)
   return bItems.map(item => {
     const view = computeAvailableStock(item)
+    const abc = abcMap[item.id] || { abcTier: 'C', soldUnits: 0 }
     return {
+      id: item.id,
       partNumber: item.partNumber,
       partName: item.partName,
       binLocation: item.binLocation || 'UNASSIGNED',
+      abcTier: abc.abcTier,
+      soldUnits: abc.soldUnits,
       onHand: view.onHand,
       reserved: view.reserved,
       available: view.available,

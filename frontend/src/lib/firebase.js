@@ -2,7 +2,13 @@ import { initializeApp, getApps } from 'firebase/app'
 import {
   getAuth,
   GoogleAuthProvider,
+  GithubAuthProvider,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  updateProfile,
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth'
@@ -17,8 +23,11 @@ const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId)
 export const googleProvider = new GoogleAuthProvider()
+export const githubProvider = new GithubAuthProvider()
 
 googleProvider.setCustomParameters({ prompt: 'select_account' })
+githubProvider.addScope('read:user')
+githubProvider.addScope('user:email')
 
 export const OperationType = Object.freeze({
   CREATE: 'create',
@@ -67,6 +76,40 @@ export async function testConnection() {
 
 export async function signInWithGoogle() {
   return signInWithPopup(auth, googleProvider)
+}
+
+export async function signInWithGithub() {
+  return signInWithPopup(auth, githubProvider)
+}
+
+export async function signInWithEmail(email, password) {
+  return signInWithEmailAndPassword(auth, email, password)
+}
+
+export async function signUpWithEmail(email, password, displayName = '') {
+  const credential = await createUserWithEmailAndPassword(auth, email, password)
+  if (displayName && credential.user) {
+    await updateProfile(credential.user, { displayName })
+  }
+  if (credential.user && !credential.user.emailVerified) {
+    await sendEmailVerification(credential.user).catch(() => {})
+  }
+  return credential
+}
+
+export async function sendFirebasePasswordReset(email) {
+  return sendPasswordResetEmail(auth, email)
+}
+
+export async function resendFirebaseVerification() {
+  if (!auth.currentUser) throw new Error('Sign in first to resend verification email.')
+  return sendEmailVerification(auth.currentUser)
+}
+
+export async function reloadFirebaseUser() {
+  if (!auth.currentUser) return null
+  await auth.currentUser.reload()
+  return auth.currentUser
 }
 
 export async function signOutFirebase() {

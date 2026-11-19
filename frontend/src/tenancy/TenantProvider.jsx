@@ -3,26 +3,49 @@ import { TenantContext } from './context.js'
 import { api } from '../lib/supabase.js'
 import { useAuth } from '../auth/context.js'
 import { readSelection, resolveSelection, storeSelection } from './selection.js'
+import { BRANCHES, COMPANIES } from '../lib/workspaceContext.js'
 
-const ORG_ID = 'org-kenyamoto'
+const CUSTOM_ORGS_PREFIX = 'kms.customOrgs.'
 
-function buildMemberships() {
-  return [
-    {
-      organization_id: ORG_ID,
-      organization_name: 'KenyaMoto Nairobi Hub',
-      branch_id: 'branch-cbd',
-      branch_name: 'Nairobi CBD Branch',
-      role: 'owner',
-    },
-    {
-      organization_id: ORG_ID,
-      organization_name: 'KenyaMoto Nairobi Hub',
-      branch_id: 'branch-ind',
-      branch_name: 'Industrial Area Depot',
-      role: 'owner',
-    },
-  ]
+function readCustomOrgs(userId) {
+  try {
+    const raw = localStorage.getItem(`${CUSTOM_ORGS_PREFIX}${userId}`)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeCustomOrgs(userId, rows) {
+  try {
+    localStorage.setItem(`${CUSTOM_ORGS_PREFIX}${userId}`, JSON.stringify(rows))
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function buildMemberships(userId) {
+  const rows = []
+  for (const company of COMPANIES) {
+    const companyBranches = BRANCHES.filter(b => b.organizationId === company.id)
+    for (const branch of companyBranches) {
+      rows.push({
+        organization_id: company.id,
+        organization_name: company.name,
+        org_type: company.type,
+        branch_id: branch.id,
+        branch_name: branch.name,
+        area: branch.area,
+        role: company.role,
+      })
+    }
+  }
+  const custom = readCustomOrgs(userId)
+  for (const item of custom) {
+    rows.push(item)
+  }
+  return rows
 }
 
 export default function TenantProvider({ children }) {
@@ -30,10 +53,13 @@ export default function TenantProvider({ children }) {
   const userId = session.user.id
   const [revision, setRevision] = useState(0)
   const [state, setState] = useState(() => {
-    const memberships = buildMemberships()
+    const memberships = buildMemberships(userId)
     const saved = readSelection(userId)
-    const selected = resolveSelection(memberships, saved)
-    const match = memberships.find(m => m.branch_id === selected.branchId) || memberships[0]
+    const selected = resolveSelection(memberships, saved.organizationId ? saved : { organizationId: 'org-kenyamotor', branchId: 'branch-cbd' })
+    const match =
+      memberships.find(
+        m => m.organization_id === selected.organizationId && (!selected.branchId || m.branch_id === selected.branchId),
+      ) || memberships[0]
     api.setScope({ userId, organizationId: match.organization_id, branchId: match.branch_id })
     return {
       loading: false,
@@ -55,23 +81,26 @@ export default function TenantProvider({ children }) {
   })
 
   useEffect(() => {
-    const memberships = buildMemberships()
+    const memberships = buildMemberships(userId)
     const saved = readSelection(userId)
-    const selected = resolveSelection(memberships, saved)
-    const match = memberships.find(m => m.branch_id === selected.branchId) || memberships[0]
+    const selected = resolveSelection(memberships, saved.organizationId ? saved : { organizationId: 'org-kenyamotor', branchId: 'branch-cbd' })
+    const match =
+      memberships.find(
+        m => m.organization_id === selected.organizationId && (!selected.branchId || m.branch_id === selected.branchId),
+      ) || memberships[0]
     storeSelection(userId, { organizationId: match.organization_id, branchId: match.branch_id })
     api.setScope({ userId, organizationId: match.organization_id, branchId: match.branch_id })
   }, [userId])
 
   const choose = useCallback(
     (organizationId, branchId = null) => {
-      const memberships = state.data?.memberships ?? buildMemberships()
+      const memberships = buildMemberships(userId)
       const resolved = resolveSelection(memberships, { organizationId, branchId })
       const match =
         memberships.find(
           m => m.organization_id === resolved.organizationId && (!resolved.branchId || m.branch_id === resolved.branchId),
         ) || memberships[0]
-      storeSelection(userId, resolved)
+      storeSelection(userId, { organizationId: match.organization_id, branchId: match.branch_id })
       api.setScope({ userId, organizationId: match.organization_id, branchId: match.branch_id })
       setRevision(r => r + 1)
       setState(prev => ({
@@ -89,11 +118,30 @@ export default function TenantProvider({ children }) {
         },
       }))
     },
-    [state.data?.memberships, userId],
+    [userId],
+  )
+
+  const addOrganization = useCallback(
+    ({ organizationId, organizationName, orgType = 'RETAIL', branchId, branchName, area = 'Kenya' }) => {
+      const custom = readCustomOrgs(userId)
+      const newRow = {
+        organization_id: organizationId,
+        organization_name: organizationName,
+        org_type: orgType,
+        branch_id: branchId,
+        branch_name: branchName,
+        area,
+        role: 'owner',
+      }
+      const nextCustom = [...custom.filter(r => r.organization_id !== organizationId), newRow]
+      writeCustomOrgs(userId, nextCustom)
+      choose(organizationId, branchId)
+    },
+    [userId, choose],
   )
 
   return (
-    <TenantContext.Provider value={{ ...state, choose, reload: () => setRevision(r => r + 1), revision }}>
+    <TenantContext.Provider value={{ ...state, choose, addOrganization, reload: () => setRevision(r => r + 1), revision }}>
       {children}
     </TenantContext.Provider>
   )

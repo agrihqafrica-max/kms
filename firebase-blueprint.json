@@ -153,8 +153,11 @@
         "discountAmount": { "type": "number" },
         "vatAmount": { "type": "number" },
         "totalAmount": { "type": "number" },
-        "paymentMethod": { "type": "string", "enum": ["cash", "mobile_money_reference", "bank_reference", "card_reference", "credit"] },
+        "paymentMethod": { "type": "string", "enum": ["cash", "mobile_money_reference", "bank_reference", "card_reference", "credit", "split"] },
         "paymentReference": { "type": "string", "maxLength": 120 },
+        "paymentsSummary": { "type": "string", "maxLength": 400 },
+        "priceSnapshotVersion": { "type": "string", "maxLength": 40 },
+        "deviceId": { "type": "string", "maxLength": 80 },
         "customerName": { "type": "string", "maxLength": 200 },
         "itemCount": { "type": "integer" },
         "etimsStatus": { "type": "string", "enum": ["NotRequired", "Queued", "Accepted"] },
@@ -364,6 +367,8 @@
         "refundAmount": { "type": "number" },
         "refundMethod": { "type": "string", "enum": ["cash", "mobile_money_reference", "credit_note"] },
         "reason": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "requestedBy": { "type": "string", "maxLength": 120 },
+        "approvedBy": { "type": "string", "maxLength": 120 },
         "status": { "type": "string", "enum": ["PendingApproval", "Approved", "Rejected"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -405,6 +410,113 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["ownerId", "templateKey", "channel", "title", "body", "status", "createdAt", "updatedAt"]
+    },
+    "DeviceRecord": {
+      "title": "DeviceRecord",
+      "description": "Enrolled counter POS device with capability profile and remote wipe revocation flag.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "deviceName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "capabilities": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["Active", "Revoked"] },
+        "wipePending": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "deviceName", "status", "wipePending", "createdAt", "updatedAt"]
+    },
+    "ApprovalRequest": {
+      "title": "ApprovalRequest",
+      "description": "Approval workflow request for cashier discounts, price overrides, and stock adjustments.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "requestType": { "type": "string", "enum": ["pos_discount", "stock_adjustment", "price_override"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "requestedBy": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "requestedRole": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "payloadJson": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["PendingApproval", "Approved", "Rejected"] },
+        "resolvedBy": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "requestType", "summary", "requestedBy", "requestedRole", "status", "createdAt", "updatedAt"]
+    },
+    "PurchaseRequisition": {
+      "title": "PurchaseRequisition",
+      "description": "Internal stock replenishment requisition prior to RFQ or Purchase Order conversion.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "reqNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "itemsSummary": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "estimatedCost": { "type": "number" },
+        "requestedBy": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "status": { "type": "string", "enum": ["PendingApproval", "Approved", "ConvertedToPO", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "reqNumber", "itemsSummary", "estimatedCost", "requestedBy", "status", "createdAt", "updatedAt"]
+    },
+    "SupplierQuote": {
+      "title": "SupplierQuote",
+      "description": "Supplier RFQ quotation submission for competitive comparison and PO award.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "rfqRef": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "supplierId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "supplierName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "partNumber": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "quotedUnitPrice": { "type": "number" },
+        "leadTimeDays": { "type": "integer" },
+        "paymentTerms": { "type": "string", "maxLength": 80 },
+        "status": { "type": "string", "enum": ["Submitted", "Awarded", "Declined"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "rfqRef", "supplierId", "supplierName", "partNumber", "quotedUnitPrice", "leadTimeDays", "status", "createdAt", "updatedAt"]
+    },
+    "InboundContainer": {
+      "title": "InboundContainer",
+      "description": "Import container tracking from booking and port clearance through godown receipt.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "containerNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "originPort": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "shippingLine": { "type": "string", "maxLength": 120 },
+        "etaDate": { "type": "string", "maxLength": 20 },
+        "itemsSummary": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "status": { "type": "string", "enum": ["Booked", "Cleared", "In Transit", "Arrived", "Godown Received"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "containerNumber", "originPort", "itemsSummary", "status", "createdAt", "updatedAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Operator support ticket and SLA resolution tracker.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "branchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "priority": { "type": "string", "enum": ["Normal", "High", "Urgent"] },
+        "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "status": { "type": "string", "enum": ["Open", "InProgress", "Resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "branchId", "subject", "category", "priority", "description", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -450,7 +562,7 @@
     },
     "/users/{userId}/creditAccounts/{accountId}": {
       "schema": { "$ref": "#/entities/CreditAccount" },
-      "description": "Wholesale credit accounts and churn risk metrics."
+      "description": "Wholesale buyer credit accounts and churn risk metrics."
     },
     "/users/{userId}/radarRequests/{requestId}": {
       "schema": { "$ref": "#/entities/RadarRequest" },
@@ -495,6 +607,30 @@
     "/users/{userId}/notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/AppNotification" },
       "description": "In-app and channel-queued alerts with opt-out enforcement."
+    },
+    "/users/{userId}/devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/DeviceRecord" },
+      "description": "Enrolled counter POS devices and remote revocation/wipe flags."
+    },
+    "/users/{userId}/approvalRequests/{approvalId}": {
+      "schema": { "$ref": "#/entities/ApprovalRequest" },
+      "description": "Manager/owner approval workflow queue for discounts, price overrides, and stock adjustments."
+    },
+    "/users/{userId}/purchaseRequisitions/{reqId}": {
+      "schema": { "$ref": "#/entities/PurchaseRequisition" },
+      "description": "Internal replenishment requisitions awaiting approval or PO conversion."
+    },
+    "/users/{userId}/supplierQuotes/{quoteId}": {
+      "schema": { "$ref": "#/entities/SupplierQuote" },
+      "description": "Supplier RFQ quotations for competitive comparison and PO award."
+    },
+    "/users/{userId}/inboundContainers/{containerId}": {
+      "schema": { "$ref": "#/entities/InboundContainer" },
+      "description": "Import container tracking from shipping line through godown receipt."
+    },
+    "/users/{userId}/supportTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Operator support tickets and resolution tracking."
     }
   }
 }

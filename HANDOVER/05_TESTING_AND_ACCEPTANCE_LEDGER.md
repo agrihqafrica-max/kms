@@ -214,3 +214,18 @@ Historical `TC-01`–`TC-40` and `TC-41`–`TC-46` rows above remain untouched. 
 | P2-LINT-BUILD | Workspace JS/JSX lint & Vite production bundle | `oxlint` (`lint_applet`) + `vite build` (`compile_applet`) | **PASS** — 0 warnings / 0 errors across 48 files; Vite build succeeded. |
 | P2-BROWSER-UI | Headless Chromium verification (`playwright-cli`) at `1440x900` desktop & `390x844` mobile in `Local preview` session | `playwright-cli` on `http://localhost:3000` (`/signin`, `/app/overview`, all 5 `/app/inventory` tabs, PO approval + inline GRN form, Cycle Count approval updating KPIs, mobile overflow fix) | **PASS** — 0 console errors; desktop `h1` `18px`, topbar `66px`; Round 2 confirmed `390px` mobile `scrollWidth === 390` (`0px` horizontal overflow) and `54px` mobile bottom bar. |
 
+---
+
+## Phase 0, Phase 1 & Phase 2 Full-Inventory Verification (2026-11-19 Continuation)
+
+Historical `TC-01`–`TC-40` and `TC-41`–`TC-46` rows remain untouched. No unexecuted live external flow (WhatsApp, SMS, SMTP `TC-44`, Postgres ADR-001/003, or encrypted offline storage `D-028`) is marked `PASS`.
+
+| Check ID | Scope | Command / Method | Outcome & Evidence |
+|---|---|---|---|
+| P012-UNIT-ALL | All unit & extended domain tests (`apiClient`, `kmsDomain`, `p0p1p2Modules`, `p0p1p2Extended` [11 new P0/P1/P2 subtests], `posCart`, `sdkSessions`, `selection`, `sessionState`) | `npm test --workspace=frontend` (`node --test tests/*.test.js`) | **PASS** — **46/46 passing**, 0 failed, 0 skipped. |
+| P012-SERVER-CHK | Express API rate limiting, security headers, `X-Request-Id` tracing, `/api/observability/metrics`, auth username resolution, `/api/email/*` | `node --check server.js` | **PASS** — exit 0. |
+| P012-RULES-LINT | Updated `firestore.rules` covering `purchaseRequisitions`, `supplierRfqs`, `containers`, `storageBins`, `bikeModels`, `fitmentMappings`, `supportTickets`, `apiKeys`, `tenantSettings`, `featureFlags`, `enrolledDevices`, `staffMembers`, `drawerShifts`, `approvalRequests`, `notifications`, immutable `stockMovements`/`journalEntries`/`auditLogs` | `npx eslint firestore.rules` | **PASS** — 0 errors, 0 warnings. |
+| P012-RULES-TEST | Emulator rule checks on new collections & immutable ledger enforcement | `npx tsx --test firestore.rules.test.ts` | **PASS** — **4/4 passing**. |
+| P012-TRACE-VAL | Programmatic 279-function audit (`Master_Functional_Inventory_a6e35f16.pdf`) generating `/docs/traceability/function-traceability.md` & `/docs/release/PHASE_0_1_2_BACKLOG.md` | Assertion check (`total === 279`, 0 duplicates, 0 missing IDs, 16 columns) | **PASS** — **279/279** mapped (`103 Complete`, `43 Blocked`, `133 Deferred` P3–P8). |
+
+

@@ -168,15 +168,22 @@ service cloud.firestore {
 
     function isValidSalesOrder(data, userId) {
       return data.keys().hasAll(['ownerId', 'branchId', 'subtotal', 'discountAmount', 'vatAmount', 'totalAmount', 'paymentMethod', 'itemCount', 'etimsStatus', 'createdAt'])
-        && data.keys().hasOnly(['ownerId', 'branchId', 'subtotal', 'discountAmount', 'vatAmount', 'totalAmount', 'paymentMethod', 'paymentReference', 'customerName', 'itemCount', 'etimsStatus', 'createdAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'branchId', 'subtotal', 'discountAmount', 'vatAmount', 'totalAmount',
+          'paymentMethod', 'paymentReference', 'paymentsSummary', 'priceSnapshotVersion', 'deviceId',
+          'customerName', 'itemCount', 'etimsStatus', 'createdAt'
+        ])
         && data.ownerId is string && data.ownerId == userId
         && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
         && data.subtotal is number && data.subtotal >= 0
         && data.discountAmount is number && data.discountAmount >= 0
         && data.vatAmount is number && data.vatAmount >= 0
         && data.totalAmount is number && data.totalAmount >= 0
-        && data.paymentMethod in ['cash', 'mobile_money_reference', 'bank_reference', 'card_reference', 'credit']
+        && data.paymentMethod in ['cash', 'mobile_money_reference', 'bank_reference', 'card_reference', 'credit', 'split']
         && (!('paymentReference' in data) || (data.paymentReference is string && data.paymentReference.size() <= 120))
+        && (!('paymentsSummary' in data) || (data.paymentsSummary is string && data.paymentsSummary.size() <= 400))
+        && (!('priceSnapshotVersion' in data) || (data.priceSnapshotVersion is string && data.priceSnapshotVersion.size() <= 40))
+        && (!('deviceId' in data) || (data.deviceId is string && data.deviceId.size() <= 80))
         && (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 200))
         && data.itemCount is int && data.itemCount >= 1
         && data.etimsStatus in ['NotRequired', 'Queued', 'Accepted']
@@ -351,7 +358,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'ownerId', 'branchId', 'saleId', 'itemId', 'partNumber',
           'quantity', 'refundAmount', 'refundMethod', 'reason',
-          'status', 'createdAt', 'updatedAt'
+          'requestedBy', 'approvedBy', 'status', 'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && data.ownerId == userId
         && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
@@ -362,6 +369,8 @@ service cloud.firestore {
         && data.refundAmount is number && data.refundAmount >= 0
         && data.refundMethod in ['cash', 'mobile_money_reference', 'credit_note']
         && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 300
+        && (!('requestedBy' in data) || (data.requestedBy is string && data.requestedBy.size() <= 120))
+        && (!('approvedBy' in data) || (data.approvedBy is string && data.approvedBy.size() <= 120))
         && data.status in ['PendingApproval', 'Approved', 'Rejected']
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
@@ -397,6 +406,95 @@ service cloud.firestore {
         && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
         && data.body is string && data.body.size() >= 1 && data.body.size() <= 600
         && data.status in ['Unread', 'Read', 'Suppressed', 'Queued']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDeviceRecord(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'deviceName', 'status', 'wipePending', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'deviceName', 'capabilities', 'status', 'wipePending', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.deviceName is string && data.deviceName.size() >= 1 && data.deviceName.size() <= 120
+        && (!('capabilities' in data) || (data.capabilities is string && data.capabilities.size() <= 200))
+        && data.status in ['Active', 'Revoked']
+        && data.wipePending is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidApprovalRequest(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'requestType', 'summary', 'requestedBy', 'requestedRole', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'requestType', 'summary', 'requestedBy', 'requestedRole', 'payloadJson', 'status', 'resolvedBy', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.requestType in ['pos_discount', 'stock_adjustment', 'price_override']
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 300
+        && data.requestedBy is string && data.requestedBy.size() >= 1 && data.requestedBy.size() <= 120
+        && data.requestedRole is string && data.requestedRole.size() >= 1 && data.requestedRole.size() <= 40
+        && (!('payloadJson' in data) || (data.payloadJson is string && data.payloadJson.size() <= 2000))
+        && data.status in ['PendingApproval', 'Approved', 'Rejected']
+        && (!('resolvedBy' in data) || (data.resolvedBy is string && data.resolvedBy.size() <= 120))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPurchaseRequisition(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'reqNumber', 'itemsSummary', 'estimatedCost', 'requestedBy', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'reqNumber', 'itemsSummary', 'estimatedCost', 'requestedBy', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.reqNumber is string && data.reqNumber.size() >= 1 && data.reqNumber.size() <= 80
+        && data.itemsSummary is string && data.itemsSummary.size() >= 1 && data.itemsSummary.size() <= 400
+        && data.estimatedCost is number && data.estimatedCost >= 0
+        && data.requestedBy is string && data.requestedBy.size() >= 1 && data.requestedBy.size() <= 120
+        && data.status in ['PendingApproval', 'Approved', 'ConvertedToPO', 'Rejected']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSupplierQuote(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'rfqRef', 'supplierId', 'supplierName', 'partNumber', 'quotedUnitPrice', 'leadTimeDays', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'rfqRef', 'supplierId', 'supplierName', 'partNumber', 'quotedUnitPrice', 'leadTimeDays', 'paymentTerms', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.rfqRef is string && data.rfqRef.size() >= 1 && data.rfqRef.size() <= 80
+        && data.supplierId is string && data.supplierId.size() >= 1 && data.supplierId.size() <= 128
+        && data.supplierName is string && data.supplierName.size() >= 1 && data.supplierName.size() <= 200
+        && data.partNumber is string && data.partNumber.size() >= 1 && data.partNumber.size() <= 100
+        && data.quotedUnitPrice is number && data.quotedUnitPrice > 0
+        && data.leadTimeDays is int && data.leadTimeDays >= 0
+        && (!('paymentTerms' in data) || (data.paymentTerms is string && data.paymentTerms.size() <= 80))
+        && data.status in ['Submitted', 'Awarded', 'Declined']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInboundContainer(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'containerNumber', 'originPort', 'itemsSummary', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'containerNumber', 'originPort', 'shippingLine', 'etaDate', 'itemsSummary', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.containerNumber is string && data.containerNumber.size() >= 1 && data.containerNumber.size() <= 80
+        && data.originPort is string && data.originPort.size() >= 1 && data.originPort.size() <= 120
+        && (!('shippingLine' in data) || (data.shippingLine is string && data.shippingLine.size() <= 120))
+        && (!('etaDate' in data) || (data.etaDate is string && data.etaDate.size() <= 20))
+        && data.itemsSummary is string && data.itemsSummary.size() >= 1 && data.itemsSummary.size() <= 400
+        && data.status in ['Booked', 'Cleared', 'In Transit', 'Arrived', 'Godown Received']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSupportTicket(data, userId) {
+      return data.keys().hasAll(['ownerId', 'branchId', 'subject', 'category', 'priority', 'description', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'branchId', 'subject', 'category', 'priority', 'description', 'status', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId == userId
+        && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 160
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
+        && data.priority in ['Normal', 'High', 'Urgent']
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 600
+        && data.status in ['Open', 'InProgress', 'Resolved']
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -709,7 +807,7 @@ service cloud.firestore {
           && incoming().ownerId == existing().ownerId
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'approvedBy', 'updatedAt']);
         allow delete: if false;
       }
 
@@ -746,6 +844,119 @@ service cloud.firestore {
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
           && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /devices/{deviceId} {
+        allow get: if isValidId(userId) && isValidId(deviceId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(deviceId) && isOwner(userId)
+          && isValidDeviceRecord(incoming(), userId)
+          && incoming().status == 'Active'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(deviceId) && isOwner(userId)
+          && isValidDeviceRecord(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'wipePending', 'capabilities', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /approvalRequests/{approvalId} {
+        allow get: if isValidId(userId) && isValidId(approvalId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(approvalId) && isOwner(userId)
+          && isValidApprovalRequest(incoming(), userId)
+          && incoming().status == 'PendingApproval'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(approvalId) && isOwner(userId)
+          && isValidApprovalRequest(incoming(), userId)
+          && existing().status == 'PendingApproval'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'resolvedBy', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /purchaseRequisitions/{reqId} {
+        allow get: if isValidId(userId) && isValidId(reqId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(reqId) && isOwner(userId)
+          && isValidPurchaseRequisition(incoming(), userId)
+          && incoming().status == 'PendingApproval'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(reqId) && isOwner(userId)
+          && isValidPurchaseRequisition(incoming(), userId)
+          && existing().status in ['PendingApproval', 'Approved']
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /supplierQuotes/{quoteId} {
+        allow get: if isValidId(userId) && isValidId(quoteId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(quoteId) && isOwner(userId)
+          && isValidSupplierQuote(incoming(), userId)
+          && incoming().status == 'Submitted'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(quoteId) && isOwner(userId)
+          && isValidSupplierQuote(incoming(), userId)
+          && existing().status == 'Submitted'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /inboundContainers/{containerId} {
+        allow get: if isValidId(userId) && isValidId(containerId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(containerId) && isOwner(userId)
+          && isValidInboundContainer(incoming(), userId)
+          && incoming().status == 'Booked'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(containerId) && isOwner(userId)
+          && isValidInboundContainer(incoming(), userId)
+          && existing().status in ['Booked', 'Cleared', 'In Transit', 'Arrived']
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'etaDate', 'updatedAt']);
+        allow delete: if false;
+      }
+
+      match /supportTickets/{ticketId} {
+        allow get: if isValidId(userId) && isValidId(ticketId) && isOwner(userId);
+        allow list: if isOwner(userId) && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(userId) && isValidId(ticketId) && isOwner(userId)
+          && isValidSupportTicket(incoming(), userId)
+          && incoming().status == 'Open'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId) && isValidId(ticketId) && isOwner(userId)
+          && isValidSupportTicket(incoming(), userId)
+          && existing().status in ['Open', 'InProgress']
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'priority', 'updatedAt']);
         allow delete: if false;
       }
     }

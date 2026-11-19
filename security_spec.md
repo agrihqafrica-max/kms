@@ -6,9 +6,10 @@
 3. Every ID path segment passes `isValidId(id)` (`size <= 128` and `^[a-zA-Z0-9_\-]+$`).
 4. Every string field enforces `.size()` bounds; every document enforces exact required keys (`hasAll`) and allowed keys (`hasOnly`).
 5. PII (`email`, `photoURL`) is isolated in `/users/{userId}/private/info` and readable/writable only by `userId == request.auth.uid` with verified email.
-6. Immutable ledger records (`sales`, `stockMovements`, `auditLogs`, `chatMessages`) forbid client `update` and `delete`.
-7. Stateful workflows (`purchaseOrders`, `transfers`, `etimsInvoices`, `payoutBatches`, `radarRequests`) enforce terminal state locks (no updates once terminal) and allowlisted `affectedKeys().hasOnly(...)` action branches.
-8. Every `createdAt` on create equals `request.time`; every `updatedAt` on update equals `request.time`; `ownerId` and `createdAt` are immutable.
+6. Immutable ledger records (`sales`, `stockMovements`, `auditLogs`, `chatMessages`, `journalEntries`) forbid client `update` and `delete`.
+7. Stateful workflows (`purchaseOrders`, `transfers`, `etimsInvoices`, `payoutBatches`, `radarRequests`, `stockCounts`, `salesReturns`, `approvalRequests`, `purchaseRequisitions`, `supplierQuotes`, `inboundContainers`, `supportTickets`) enforce terminal state locks (no updates once terminal) and allowlisted `affectedKeys().hasOnly(...)` action branches.
+8. Enrolled devices (`devices`) enforce active-to-revoked remote wipe flags without permitting deletion, and `SalesReturn` carries `requestedBy`/`approvedBy` attribution for separation-of-duties checks (`BR-002`).
+9. Every `createdAt` on create equals `request.time`; every `updatedAt` on update equals `request.time`; `ownerId` and `createdAt` are immutable.
 
 ## 2. The "Dirty Dozen" Payloads (Expected: PERMISSION_DENIED)
 1. **Cross-Tenant Read**: User B reads `/users/userA/inventory/item1`.

@@ -96,3 +96,23 @@ Status: **IMPLEMENTED & VERIFIED** on the active Firebase/Firestore workspace (`
 - **Enterprise SaaS Visual & Layout Overhaul (`index.css`, `App.css`, `Shell.jsx`, `SelectionPages.jsx`)**:
   - Replaced Vite starter `56px` heading scale and stacked headers with compact single-row SaaS workspace header (`66px` topbar, `18px` `h1`), `Plus Jakarta Sans` + `DM Sans` + `JetBrains Mono` typography, single-elevation flat borders, squared `4px` semantic tags, and responsive `390px` mobile layout (`0px` horizontal overflow).
 
+---
+
+## Phase 0, Phase 1 & Phase 2 Full Inventory Audit & Implementation (2026-11-19 Continuation)
+
+Status: **146 P0/P1/P2 functions mapped (103 Complete, 43 Blocked); 133 P3–P8 functions Deferred**. Authoritative register: `docs/traceability/function-traceability.md` and `docs/release/PHASE_0_1_2_BACKLOG.md`.
+
+### Implemented in Active Workspace
+- **P0 Platform & Operations**:
+  - Multi-company branding (**Kenya Motorcycle Spare Parts General** with companies `Kenya Motor`, `Kirinyaga Spares & Workshop`, `Rift Valley Boda Parts`), active/suspended tenant toggle, `TenantSettings` (`PLT-002`, `IDN-011`), branch manager (`PLT-003`), feature flags (`PLT-007`), staff RBAC onboarding (`IDN-007`, `IDN-010`), trusted device enrolment & remote wipe (`IDN-005`, `IDN-006`), API key lifecycle (`INT-013`), workspace backup export & ledger integrity verifier (`PLT-014`), PWA shell (`UX-001`), Express sliding-window rate limiter & security headers (`INT-014`, `SEC-010`), structured JSON access logs (`OPS-001`), `X-Request-Id` tracing (`OPS-003`), and `GET /api/observability/metrics` + `evaluateOpsAlertRules` (`OPS-002`, `OPS-004`, `OPS-008`, `RPT-014`).
+- **P1 Counter POS, Finance, Reporting, Notifications & Support**:
+  - Keyboard/barcode Enter-to-scan quick-add (`CAT-009`, `POS-001`, `UX-005`), price-version lock (`POS-003`), role-capped discount approval requests (`POS-004`, `IDN-009`), single & split-tender payment validation (`POS-006`, `CMP-010`, `FIN-011`), 80mm thermal print + consent-gated email receipt (`POS-007`), write-ahead offline outbox with conflict detection & manual resolution (`POS-008`, `OPS-005`, `UX-003`), separation-of-duties returns & reversing journal entries (`POS-009`, `FIN-012`), cash-drawer shift control & variance separation (`POS-019`, `POS-020`, `FIN-007`, `FIN-008`), consent/opt-out/template/delivery notification engine (`IDN-018`, `NTF-001`, `NTF-002`, `NTF-007..010`, `SEC-007`), Nairobi EAT date-range & payment-method report filters (`RPT-001..005`, `PLT-011`), support ticketing, FAQ, onboarding readiness checklist, and training sandbox mode (`ADM-002..005`).
+- **P2 Inventory, Catalogue & Procurement**:
+  - Pareto ABC inventory classification (`INV-017`), approval-gated stock adjustments (`INV-007`), pack breaking (`INV-020`), printable barcode shelf labels (`INV-021`), physical storage bins (`PLT-004`), bike-model registry & fitment matrix (`CAT-003`, `CAT-004`, `CAT-005`), purchase requisitions (`PRC-002`), supplier RFQs & ranked award (`PRC-003`), inbound container stage tracking (`PRC-011`), and supplier purchase returns (`PRC-013`).
+- **Explicit Remaining Blockers**:
+  - Plaintext offline `localStorage` encryption remains **Blocked** under `D-028` (`SEC-002`, `UX-002`, `POS-008`).
+  - Dual-backend canonical DB choice & Postgres foundation ADR-001/003 remain **Blocked** under `D-032` (`PLT-001`, `FIN-002`).
+  - Kiswahili native review remains **Blocked** under `D-027` (`UX-012`).
+  - External SMTP/Resend live secrets (`TC-44`), WhatsApp Cloud API, SMS gateway, cloud storage buckets (0 provisioned), hardware barcode/thermal printers, and hosted CI/staging remain **Blocked**.
+
+

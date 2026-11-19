@@ -100,10 +100,17 @@ function finalizeEntry({ branchId, entryType, sourceId, description, lines, reve
   }
 }
 
+function assetAccountForMethod(method) {
+  if (method === 'credit') return '1100 Accounts Receivable (Wholesale Credit)'
+  if (method === 'cash') return '1010 Cash on Hand'
+  return '1020 M-Pesa Till & Bank Clearing'
+}
+
 export function buildSaleJournalEntry({
   branchId,
   saleId,
   paymentMethod = 'cash',
+  payments = null,
   totalAmount = 0,
   vatAmount = 0,
   cogsAmount = 0,
@@ -114,17 +121,28 @@ export function buildSaleJournalEntry({
   }
   const vat = round2(Math.min(Math.max(0, Number(vatAmount || 0)), gross))
   const netRevenue = round2(gross - vat)
-  const assetAccount =
-    paymentMethod === 'credit'
-      ? '1100 Accounts Receivable (Wholesale Credit)'
-      : paymentMethod === 'cash'
-        ? '1010 Cash on Hand'
-        : '1020 M-Pesa Till & Bank Clearing'
 
-  const lines = [
-    { account: assetAccount, debit: gross, credit: 0 },
-    { account: '4010 Spare Parts Sales Revenue', debit: 0, credit: netRevenue },
-  ]
+  const lines = []
+  const splitRows = Array.isArray(payments) ? payments.filter(p => Number(p?.amount || 0) > 0) : []
+  if (splitRows.length > 0) {
+    const grouped = new Map()
+    let splitSum = 0
+    for (const p of splitRows) {
+      const acct = assetAccountForMethod(p.method)
+      const amt = round2(Number(p.amount || 0))
+      grouped.set(acct, round2((grouped.get(acct) || 0) + amt))
+      splitSum = round2(splitSum + amt)
+    }
+    if (Math.abs(splitSum - gross) <= 0.01) {
+      for (const [acct, amt] of grouped.entries()) {
+        if (amt > 0) lines.push({ account: acct, debit: amt, credit: 0 })
+      }
+    }
+  }
+  if (!lines.length) {
+    lines.push({ account: assetAccountForMethod(paymentMethod), debit: gross, credit: 0 })
+  }
+  lines.push({ account: '4010 Spare Parts Sales Revenue', debit: 0, credit: netRevenue })
   if (vat > 0) {
     lines.push({ account: '2200 Output VAT Payable (16% eTIMS)', debit: 0, credit: vat })
   }
@@ -138,7 +156,7 @@ export function buildSaleJournalEntry({
     branchId,
     entryType: 'sale',
     sourceId: saleId,
-    description: `POS sale ${saleId} (${paymentMethod}) — Revenue KES ${netRevenue}, VAT KES ${vat}${safeCogs > 0 ? `, COGS KES ${safeCogs}` : ''}`,
+    description: `POS sale ${saleId} (${splitRows.length > 1 ? 'split' : paymentMethod}) — Revenue KES ${netRevenue}, VAT KES ${vat}${safeCogs > 0 ? `, COGS KES ${safeCogs}` : ''}`,
     lines,
   })
 }

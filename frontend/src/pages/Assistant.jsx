@@ -177,7 +177,7 @@ export default function Assistant() {
         <div className="card-head wrap-head">
           <div>
             <p className="eyebrow">Phase 5 · Gemini Multi-Turn Co-Pilot</p>
-            <h2>KenyaMoto AI Supply Assistant</h2>
+            <h2>Kenya Motorcycle Spare Parts AI Co-Pilot</h2>
           </div>
           <div className="inline-controls">
             <select
@@ -328,7 +328,7 @@ export default function Assistant() {
           }}
         >
           <input
-            aria-label="Ask KenyaMoto Co-Pilot"
+            aria-label="Ask Spare Parts General Co-Pilot"
             placeholder="Ask about part compatibility, KES pricing, or nearby suppliers…"
             value={draft}
             onChange={e => setDraft(e.target.value)}

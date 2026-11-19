@@ -1,8 +1,9 @@
 import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomInt, randomUUID } from 'node:crypto'
 import { GoogleGenAI } from '@google/genai'
+import nodemailer from 'nodemailer'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -10,24 +11,125 @@ const __dirname = path.dirname(__filename)
 const app = express()
 app.use(express.json())
 
-const ORG_ID = '10000000-0000-4000-8000-000000000001'
-const BRANCH_CBD_ID = '20000000-0000-4000-8000-000000000001'
-const BRANCH_IND_ID = '20000000-0000-4000-8000-000000000002'
+// Observability (OPS-001/002/003) & API Rate Limiting (INT-014/SEC-010)
+const RATE_WINDOW_MS = 60_000
+const RATE_MAX_REQUESTS = 120
+const rateBuckets = new Map()
+const apiMetrics = {
+  startedAt: new Date().toISOString(),
+  totalRequests: 0,
+  apiRequests: 0,
+  errors4xx: 0,
+  errors5xx: 0,
+  rateLimitedCount: 0,
+  latenciesMs: [],
+  recentLogs: [],
+}
+
+function recordMetricSample(entry) {
+  apiMetrics.totalRequests += 1
+  if (entry.path.startsWith('/api')) apiMetrics.apiRequests += 1
+  if (entry.status >= 500) apiMetrics.errors5xx += 1
+  else if (entry.status >= 400) apiMetrics.errors4xx += 1
+  apiMetrics.latenciesMs.push(entry.durationMs)
+  if (apiMetrics.latenciesMs.length > 200) apiMetrics.latenciesMs.shift()
+  if (entry.path.startsWith('/api') || entry.path.startsWith('/health')) {
+    apiMetrics.recentLogs.unshift(entry)
+    if (apiMetrics.recentLogs.length > 40) apiMetrics.recentLogs.pop()
+  }
+}
+
+app.use((req, res, next) => {
+  const incomingId = String(req.get('x-request-id') || '').trim().slice(0, 64)
+  const requestId = incomingId || randomUUID()
+  req.requestId = requestId
+  res.setHeader('X-Request-Id', requestId)
+  const start = Date.now()
+  res.on('finish', () => {
+    const durationMs = Date.now() - start
+    const entry = {
+      requestId,
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      durationMs,
+      timestamp: new Date().toISOString(),
+    }
+    recordMetricSample(entry)
+    if (req.path.startsWith('/api')) {
+      console.log(JSON.stringify({ level: res.statusCode >= 500 ? 'error' : 'info', ...entry }))
+    }
+  })
+  next()
+})
+
+app.use('/api', (req, res, next) => {
+  const clientIp = req.ip || req.socket?.remoteAddress || 'unknown'
+  const now = Date.now()
+  const cutoff = now - RATE_WINDOW_MS
+  const hits = (rateBuckets.get(clientIp) || []).filter(ts => ts > cutoff)
+  if (hits.length >= RATE_MAX_REQUESTS) {
+    apiMetrics.rateLimitedCount += 1
+    res.setHeader('Retry-After', '60')
+    return res.status(429).json({
+      error: 'Too many API requests',
+      detail: 'API rate limit exceeded (120 requests/minute). Please retry shortly.',
+      requestId: req.requestId,
+    })
+  }
+  hits.push(now)
+  rateBuckets.set(clientIp, hits)
+  next()
+})
+
+const ORG_ID = 'org-kenyamotor'
+const ORG_KIRINYAGA_ID = 'org-kirinyaga'
+const ORG_RIFTVALLEY_ID = 'org-riftvalley'
+const BRANCH_CBD_ID = 'branch-cbd'
+const BRANCH_IND_ID = 'branch-ind'
+const BRANCH_KIR_ID = 'branch-kir-main'
+const BRANCH_NGARA_ID = 'branch-ngara'
+const BRANCH_NAKURU_ID = 'branch-nakuru'
+const BRANCH_ELDORET_ID = 'branch-eldoret'
 
 // MOCKED — in-memory store replacing PostgreSQL / Supabase RPCs when offline
 const organizations = new Map([
   [ORG_ID, {
     id: ORG_ID,
-    name: 'KenyaMoto Nairobi Hub',
+    name: 'Kenya Motor',
     org_type: 'RETAIL',
+    kra_compliance_enabled: true,
+    payroll_compliance_enabled: true,
+  }],
+  [ORG_KIRINYAGA_ID, {
+    id: ORG_KIRINYAGA_ID,
+    name: 'Kirinyaga Spares & Workshop',
+    org_type: 'RETAIL',
+    kra_compliance_enabled: true,
+    payroll_compliance_enabled: false,
+  }],
+  [ORG_RIFTVALLEY_ID, {
+    id: ORG_RIFTVALLEY_ID,
+    name: 'Rift Valley Boda Parts',
+    org_type: 'WHOLESALER',
     kra_compliance_enabled: true,
     payroll_compliance_enabled: true,
   }],
 ])
 
 const branches = new Map([
-  [BRANCH_CBD_ID, { id: BRANCH_CBD_ID, organization_id: ORG_ID, name: 'Nairobi CBD Branch' }],
-  [BRANCH_IND_ID, { id: BRANCH_IND_ID, organization_id: ORG_ID, name: 'Industrial Area Depot' }],
+  [BRANCH_CBD_ID, { id: BRANCH_CBD_ID, organization_id: ORG_ID, name: 'Kenya Motor — Nairobi CBD Shop' }],
+  [BRANCH_IND_ID, { id: BRANCH_IND_ID, organization_id: ORG_ID, name: 'Kenya Motor — Industrial Area Depot' }],
+  [BRANCH_KIR_ID, { id: BRANCH_KIR_ID, organization_id: ORG_KIRINYAGA_ID, name: 'Kirinyaga Rd Counter & Workshop' }],
+  [BRANCH_NGARA_ID, { id: BRANCH_NGARA_ID, organization_id: ORG_KIRINYAGA_ID, name: 'Ngara Boda Service Bay' }],
+  [BRANCH_NAKURU_ID, { id: BRANCH_NAKURU_ID, organization_id: ORG_RIFTVALLEY_ID, name: 'Nakuru Main Shop' }],
+  [BRANCH_ELDORET_ID, { id: BRANCH_ELDORET_ID, organization_id: ORG_RIFTVALLEY_ID, name: 'Eldoret Spares Depot' }],
+])
+
+const usernameDirectory = new Map([
+  ['owner', 'owner@kenyamoto.co.ke'],
+  ['kenyamotor', 'owner@kenyamoto.co.ke'],
+  ['agrihq', 'agrihq.africa@gmail.com'],
 ])
 
 const inventoryItems = [
@@ -912,6 +1014,485 @@ app.post('/api/ai/maps', async (req, res) => {
   }
 })
 
+function getAppBaseUrl(req) {
+  const configured = (process.env.APP_URL || '').trim().replace(/\/$/, '')
+  if (configured) return configured
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'http'
+  return `${proto}://${req.get('host')}`
+}
+
+app.post('/api/auth/register-username', (req, res) => {
+  const username = String(req.body?.username || '').trim().toLowerCase()
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  if (!username || username.length < 2 || !email.includes('@')) {
+    return res.status(422).json({ detail: 'Valid username and email are required.' })
+  }
+  usernameDirectory.set(username, email)
+  res.status(201).json({ username, email })
+})
+
+app.post('/api/auth/resolve-username', (req, res) => {
+  const identifier = String(req.body?.identifier || '').trim().toLowerCase()
+  if (!identifier) return res.status(422).json({ detail: 'Username or email is required.' })
+  if (identifier.includes('@')) {
+    return res.json({ email: identifier })
+  }
+  const email = usernameDirectory.get(identifier) || null
+  if (!email) {
+    return res.status(404).json({ detail: `No account email linked to username "${identifier}". Sign in with your email address or create an account first.` })
+  }
+  res.json({ email, username: identifier })
+})
+
+app.get('/api/auth/github/url', (req, res) => {
+  const clientId = (process.env.GITHUB_CLIENT_ID || '').trim()
+  const baseUrl = getAppBaseUrl(req)
+  const redirectUri = `${baseUrl}/auth/github/callback`
+  if (!clientId) {
+    return res.json({ configured: false, callbackUrl: redirectUri, url: '' })
+  }
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: 'read:user user:email',
+  })
+  res.json({
+    configured: true,
+    callbackUrl: redirectUri,
+    url: `https://github.com/login/oauth/authorize?${params.toString()}`,
+  })
+})
+
+async function handleGithubCallback(req, res) {
+  const code = String(req.query.code || '').trim()
+  const clientId = (process.env.GITHUB_CLIENT_ID || '').trim()
+  const clientSecret = (process.env.GITHUB_CLIENT_SECRET || '').trim()
+  const baseUrl = getAppBaseUrl(req)
+  const redirectUri = `${baseUrl}/auth/github/callback`
+
+  if (!code || !clientId || !clientSecret) {
+    return res.status(400).send(`
+      <html><body><script>
+        if (window.opener) {
+          window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', provider: 'github', error: 'GitHub OAuth is not configured on the server.' }, '*');
+          window.close();
+        }
+      </script><p>GitHub OAuth is not configured on the server.</p></body></html>
+    `)
+  }
+
+  try {
+    const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri,
+      }),
+    })
+    const tokenData = await tokenRes.json()
+    if (!tokenData.access_token) {
+      throw new Error(tokenData.error_description || 'Failed to obtain GitHub access token.')
+    }
+
+    const userRes = await fetch('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}`, 'User-Agent': 'kenya-motorcycle-spare-parts-general' },
+    })
+    const ghUser = await userRes.json()
+
+    let primaryEmail = ghUser.email || ''
+    if (!primaryEmail) {
+      const emailsRes = await fetch('https://api.github.com/user/emails', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}`, 'User-Agent': 'kenya-motorcycle-spare-parts-general' },
+      })
+      const emails = await emailsRes.json().catch(() => [])
+      const verified = Array.isArray(emails) ? emails.find(e => e.primary && e.verified) || emails.find(e => e.verified) || emails[0] : null
+      primaryEmail = verified?.email || `${ghUser.login || 'github'}@users.noreply.github.com`
+    }
+
+    const payload = {
+      type: 'OAUTH_AUTH_SUCCESS',
+      provider: 'github',
+      user: {
+        id: `github-${ghUser.id}`,
+        email: primaryEmail,
+        username: ghUser.login || '',
+        displayName: ghUser.name || ghUser.login || 'GitHub User',
+        photoURL: ghUser.avatar_url || '',
+      },
+    }
+    const safeJson = JSON.stringify(payload).replace(/</g, '\\u003c')
+    return res.send(`
+      <html><body><script>
+        if (window.opener) {
+          window.opener.postMessage(${safeJson}, '*');
+          window.close();
+        } else {
+          window.location.href = '/';
+        }
+      </script><p>GitHub sign-in successful. Closing window…</p></body></html>
+    `)
+  } catch (err) {
+    const safeErr = JSON.stringify({ type: 'OAUTH_AUTH_ERROR', provider: 'github', error: err.message || 'GitHub OAuth failed' }).replace(/</g, '\\u003c')
+    return res.status(500).send(`
+      <html><body><script>
+        if (window.opener) {
+          window.opener.postMessage(${safeErr}, '*');
+          window.close();
+        }
+      </script><p>GitHub authentication error.</p></body></html>
+    `)
+  }
+}
+
+app.get(['/auth/github/callback', '/auth/github/callback/'], handleGithubCallback)
+
+app.get('/api/email/status', (_req, res) => {
+  const hasSmtp = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+  const hasResend = Boolean(process.env.RESEND_API_KEY)
+  res.json({
+    configured: hasSmtp || hasResend,
+    provider: hasSmtp ? 'smtp' : hasResend ? 'resend' : null,
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@kenyamotospares.co.ke',
+  })
+})
+
+app.get('/api/observability/metrics', (req, res) => {
+  const sorted = [...apiMetrics.latenciesMs].sort((a, b) => a - b)
+  const p95Index = sorted.length ? Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95)) : 0
+  const p95LatencyMs = sorted.length ? sorted[p95Index] : 0
+  const error5xxRatePct = apiMetrics.totalRequests
+    ? Number(((apiMetrics.errors5xx / apiMetrics.totalRequests) * 100).toFixed(2))
+    : 0
+  res.json({
+    requestId: req.requestId,
+    startedAt: apiMetrics.startedAt,
+    totalRequests: apiMetrics.totalRequests,
+    apiRequests: apiMetrics.apiRequests,
+    errors4xx: apiMetrics.errors4xx,
+    errors5xx: apiMetrics.errors5xx,
+    error5xxRatePct,
+    p95LatencyMs,
+    rateLimitedCount: apiMetrics.rateLimitedCount,
+    rateLimitPolicy: { maxRequests: RATE_MAX_REQUESTS, windowSeconds: RATE_WINDOW_MS / 1000 },
+    integrations: {
+      geminiAi: Boolean((process.env.GEMINI_API_KEY || '').trim()),
+      email: Boolean((process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) || process.env.RESEND_API_KEY),
+      githubOAuth: Boolean((process.env.GITHUB_CLIENT_ID || '').trim() && (process.env.GITHUB_CLIENT_SECRET || '').trim()),
+      supabase: Boolean((process.env.VITE_SUPABASE_URL || '').trim() && (process.env.VITE_SUPABASE_ANON_KEY || '').trim()),
+    },
+    recentLogs: apiMetrics.recentLogs.slice(0, 15),
+  })
+})
+
+app.post('/api/email/send', async (req, res) => {
+  const to = String(req.body?.to || '').trim()
+  const subject = String(req.body?.subject || '').trim()
+  const text = String(req.body?.text || '').trim()
+  if (!to || !to.includes('@') || !subject || !text) {
+    return res.status(422).json({ detail: 'Valid recipient email, subject, and message body are required.' })
+  }
+
+  const smtpHost = (process.env.SMTP_HOST || '').trim()
+  const smtpUser = (process.env.SMTP_USER || '').trim()
+  const smtpPass = (process.env.SMTP_PASS || '').trim()
+  const smtpPort = Number(process.env.SMTP_PORT || 587)
+  const from = (process.env.SMTP_FROM || smtpUser || 'Kenya Motorcycle Spare Parts General <onboarding@resend.dev>').trim()
+
+  if (smtpHost && smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: { user: smtpUser, pass: smtpPass },
+      })
+      const info = await transporter.sendMail({
+        from,
+        to,
+        subject: subject.slice(0, 200),
+        text: text.slice(0, 10000),
+      })
+      return res.json({ ok: true, to, provider: 'smtp', messageId: info.messageId })
+    } catch (err) {
+      return res.status(502).json({ error: 'SMTP delivery failed', detail: err.message || 'Check SMTP credentials.' })
+    }
+  }
+
+  const resendKey = (process.env.RESEND_API_KEY || '').trim()
+  if (resendKey) {
+    try {
+      const resp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.SMTP_FROM || 'Kenya Motorcycle Spare Parts General <onboarding@resend.dev>',
+          to: [to],
+          subject: subject.slice(0, 200),
+          text: text.slice(0, 10000),
+        }),
+      })
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        return res.status(502).json({ error: 'Resend delivery failed', detail: data.message || 'Unable to send email.' })
+      }
+      return res.json({ ok: true, to, provider: 'resend', messageId: data.id || 'sent' })
+    } catch (err) {
+      return res.status(502).json({ error: 'Resend delivery failed', detail: err.message || 'Unable to send email.' })
+    }
+  }
+
+  return res.status(503).json({
+    error: 'Email delivery is not configured on the server.',
+    detail: 'Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS (for Gmail/SMTP) or RESEND_API_KEY in AI Studio Secrets to deliver mail to your inbox.',
+  })
+})
+
+const otpChallenges = new Map()
+const revokedSessionsBefore = new Map()
+
+function buildIntegrationRegistry() {
+  const smtpReady = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+  const resendReady = Boolean(process.env.RESEND_API_KEY)
+  const whatsappReady = Boolean(process.env.WHATSAPP_CLOUD_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID)
+  const smsReady = Boolean(process.env.SMS_API_KEY && (process.env.SMS_SENDER_ID || process.env.TWILIO_ACCOUNT_SID))
+  const bucketReady = Boolean(process.env.STORAGE_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET)
+  const pgReady = Boolean(process.env.DATABASE_URL)
+
+  return [
+    {
+      id: 'int-gemini',
+      name: 'Gemini AI Co-Pilot & Grounding',
+      category: 'AI',
+      configured: Boolean((process.env.GEMINI_API_KEY || '').trim()),
+      requiredSecrets: ['GEMINI_API_KEY'],
+      endpoint: '/api/ai/chat',
+    },
+    {
+      id: 'int-email',
+      name: 'Transactional Email (SMTP / Resend)',
+      category: 'Notifications',
+      configured: smtpReady || resendReady,
+      requiredSecrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'RESEND_API_KEY'],
+      endpoint: '/api/email/send',
+    },
+    {
+      id: 'int-whatsapp',
+      name: 'Meta WhatsApp Business Cloud API',
+      category: 'Notifications',
+      configured: whatsappReady,
+      requiredSecrets: ['WHATSAPP_CLOUD_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_VERIFY_TOKEN'],
+      endpoint: '/api/notifications/whatsapp',
+    },
+    {
+      id: 'int-sms',
+      name: 'Kenyan SMS Gateway (Africa\'s Talking / Twilio)',
+      category: 'Notifications & OTP',
+      configured: smsReady,
+      requiredSecrets: ['SMS_API_KEY', 'SMS_USERNAME', 'SMS_SENDER_ID'],
+      endpoint: '/api/notifications/sms',
+    },
+    {
+      id: 'int-github-oauth',
+      name: 'GitHub OAuth Sign-In',
+      category: 'Identity',
+      configured: Boolean((process.env.GITHUB_CLIENT_ID || '').trim() && (process.env.GITHUB_CLIENT_SECRET || '').trim()),
+      requiredSecrets: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
+      endpoint: '/api/auth/github/url',
+    },
+    {
+      id: 'int-storage',
+      name: 'Cloud Object Storage Bucket (Part Images & PDFs)',
+      category: 'Media Storage',
+      configured: bucketReady,
+      requiredSecrets: ['STORAGE_BUCKET_NAME'],
+      endpoint: 'Client mediaVault compressed locally; bucket upload awaits STORAGE_BUCKET_NAME',
+    },
+    {
+      id: 'int-postgres',
+      name: 'PostgreSQL / Supabase Ledger & Migration Pack',
+      category: 'Database',
+      configured: pgReady,
+      requiredSecrets: ['DATABASE_URL', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'],
+      endpoint: 'migrations/004_phase0_1_2_ledger_sync_governance.sql',
+    },
+  ]
+}
+
+app.get('/api/integrations/registry', (req, res) => {
+  res.json({
+    requestId: req.requestId,
+    generatedAt: new Date().toISOString(),
+    integrations: buildIntegrationRegistry(),
+  })
+})
+
+app.post('/api/notifications/whatsapp', async (req, res) => {
+  const { to, message, customerConsentWhatsApp = true } = req.body || {}
+  if (customerConsentWhatsApp === false) {
+    return res.status(422).json({ detail: 'Suppressed: customer opted out of WhatsApp messaging (consentWhatsApp=false).' })
+  }
+  const phone = String(to || '').replace(/\s+/g, '')
+  const text = String(message || '').trim()
+  if (!phone || !text) {
+    return res.status(422).json({ detail: 'Recipient phone (+254...) and message body are required.' })
+  }
+  const token = (process.env.WHATSAPP_CLOUD_TOKEN || '').trim()
+  const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim()
+  if (!token || !phoneId) {
+    return res.status(503).json({
+      error: 'WhatsApp Cloud API credentials are not configured.',
+      detail: 'Set WHATSAPP_CLOUD_TOKEN and WHATSAPP_PHONE_NUMBER_ID in AI Studio Secrets to dispatch live WhatsApp messages.',
+    })
+  }
+  try {
+    const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phone.replace(/^\+/, ''),
+        type: 'text',
+        text: { body: text.slice(0, 1000) },
+      }),
+    })
+    const data = await resp.json().catch(() => ({}))
+    if (!resp.ok) {
+      return res.status(502).json({ error: 'WhatsApp Cloud dispatch failed', detail: data?.error?.message || 'Gateway error' })
+    }
+    return res.json({ ok: true, provider: 'whatsapp_cloud', messageId: data?.messages?.[0]?.id || 'sent' })
+  } catch (err) {
+    return res.status(502).json({ error: 'WhatsApp Cloud dispatch failed', detail: err.message })
+  }
+})
+
+app.post('/api/notifications/sms', async (req, res) => {
+  const { to, message, customerConsentSms = true } = req.body || {}
+  if (customerConsentSms === false) {
+    return res.status(422).json({ detail: 'Suppressed: customer opted out of SMS messaging (consentSms=false).' })
+  }
+  const phone = String(to || '').trim()
+  const text = String(message || '').trim()
+  if (!phone || !text) {
+    return res.status(422).json({ detail: 'Recipient phone (+254...) and message body are required.' })
+  }
+  const apiKey = (process.env.SMS_API_KEY || '').trim()
+  const username = (process.env.SMS_USERNAME || '').trim()
+  if (!apiKey || !username) {
+    return res.status(503).json({
+      error: 'SMS Gateway credentials are not configured.',
+      detail: 'Set SMS_API_KEY, SMS_USERNAME, and SMS_SENDER_ID in AI Studio Secrets to dispatch live SMS alerts.',
+    })
+  }
+  try {
+    const formBody = new URLSearchParams({
+      username,
+      to: phone,
+      message: text.slice(0, 480),
+      ...(process.env.SMS_SENDER_ID ? { from: process.env.SMS_SENDER_ID } : {}),
+    })
+    const resp = await fetch('https://api.africastalking.com/version1/messaging', {
+      method: 'POST',
+      headers: { apiKey, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody.toString(),
+    })
+    const data = await resp.json().catch(() => ({}))
+    if (!resp.ok) {
+      return res.status(502).json({ error: 'SMS dispatch failed', detail: data?.SMSMessageData?.Message || 'Gateway error' })
+    }
+    return res.json({ ok: true, provider: 'africastalking', response: data?.SMSMessageData || {} })
+  } catch (err) {
+    return res.status(502).json({ error: 'SMS dispatch failed', detail: err.message })
+  }
+})
+
+app.post('/api/auth/otp/request', async (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\s+/g, '')
+  if (!/^\+?\d{9,15}$/.test(phone)) {
+    return res.status(422).json({ detail: 'Enter a valid mobile phone number (e.g. +254712345678).' })
+  }
+  const smsKey = (process.env.SMS_API_KEY || '').trim()
+  const smsUser = (process.env.SMS_USERNAME || '').trim()
+  const code = String(randomInt(100000, 999999))
+  const digest = createHash('sha256').update(`${phone}:${code}`).digest('hex')
+  otpChallenges.set(phone, { digest, expiresAt: Date.now() + 5 * 60_000, attempts: 0 })
+
+  if (!smsKey || !smsUser) {
+    return res.status(503).json({
+      error: 'SMS OTP gateway not configured.',
+      detail: 'Phone OTP challenge prepared, but SMS_API_KEY and SMS_USERNAME secrets are required to send live SMS verification codes. Sign in using Username/Email + Password, Gmail, or GitHub.',
+    })
+  }
+  try {
+    const formBody = new URLSearchParams({
+      username: smsUser,
+      to: phone,
+      message: `Your Kenya Motorcycle Spare Parts General verification code is ${code}. Valid for 5 minutes.`,
+    })
+    const resp = await fetch('https://api.africastalking.com/version1/messaging', {
+      method: 'POST',
+      headers: { apiKey: smsKey, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody.toString(),
+    })
+    if (!resp.ok) {
+      return res.status(502).json({ detail: 'Failed to dispatch SMS OTP via gateway.' })
+    }
+    return res.json({ ok: true, phone, expiresInSeconds: 300 })
+  } catch (err) {
+    return res.status(502).json({ detail: err.message || 'SMS OTP gateway unreachable.' })
+  }
+})
+
+app.post('/api/auth/otp/verify', (req, res) => {
+  const phone = String(req.body?.phone || '').replace(/\s+/g, '')
+  const code = String(req.body?.code || '').trim()
+  const entry = otpChallenges.get(phone)
+  if (!entry || Date.now() > entry.expiresAt) {
+    otpChallenges.delete(phone)
+    return res.status(401).json({ detail: 'OTP challenge expired or not found. Request a new code.' })
+  }
+  entry.attempts += 1
+  if (entry.attempts > 5) {
+    otpChallenges.delete(phone)
+    return res.status(429).json({ detail: 'Too many invalid OTP attempts. Request a new code.' })
+  }
+  const candidate = createHash('sha256').update(`${phone}:${code}`).digest('hex')
+  if (candidate !== entry.digest) {
+    return res.status(401).json({ detail: 'Incorrect verification code.' })
+  }
+  otpChallenges.delete(phone)
+  return res.json({
+    ok: true,
+    user: {
+      id: `phone-${phone.replace(/^\+/, '')}`,
+      email: `${phone.replace(/^\+/, '')}@phone.kenyamoto.local`,
+      phone,
+      displayName: `Rider/Staff (${phone})`,
+    },
+  })
+})
+
+app.post('/api/auth/sessions/revoke', (req, res) => {
+  const userId = String(req.body?.userId || '').trim()
+  if (!userId) return res.status(422).json({ detail: 'userId is required.' })
+  const revokedAt = Date.now()
+  revokedSessionsBefore.set(userId, revokedAt)
+  res.json({ ok: true, userId, revokedAt })
+})
+
+app.get('/api/auth/sessions/status', (req, res) => {
+  const userId = String(req.query?.userId || '').trim()
+  const sessionStartedAt = Number(req.query?.sessionStartedAt || 0)
+  const revokedBefore = revokedSessionsBefore.get(userId) || 0
+  const revoked = Boolean(userId && revokedBefore > 0 && (!sessionStartedAt || sessionStartedAt < revokedBefore))
+  res.json({ userId, revoked, revokedBefore: revokedBefore || null })
+})
+
 const distDir = path.join(__dirname, 'frontend', 'dist')
 app.use(express.static(distDir))
 
@@ -921,5 +1502,5 @@ app.get('/{*splat}', (_req, res) => {
 
 const port = Number(process.env.PORT) || 3000
 app.listen(port, '0.0.0.0', () => {
-  console.log(`KenyaMoto Supply Hub listening on http://0.0.0.0:${port}`)
+  console.log(`Kenya Motorcycle Spare Parts General listening on http://0.0.0.0:${port}`)
 })

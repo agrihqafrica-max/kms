@@ -1,14 +1,18 @@
 import { useState } from 'react'
+import { useTenant } from '../tenancy/context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney } from '../lib/format.js'
 import {
+  CONTAINER_STAGE_ORDER,
   buildInventoryValuationCsv,
   buildReorderRecommendations,
+  classifyAbcInventory,
   classifyStockVelocity,
   computeAvailableStock,
   computeGrnSettlement,
   computeStockHealthSummary,
   evaluateSupplierScore,
+  scoreAndRankRfqs,
 } from '../lib/kmsDomain.js'
 import { parseCatalogueCsvAndDetectDuplicates } from '../lib/platformGovernance.js'
 
@@ -40,6 +44,7 @@ function poStatusTagClass(status) {
 }
 
 export default function Inventory() {
+  const { data: { context } } = useTenant()
   const {
     activeBranchId,
     branches,
@@ -48,6 +53,24 @@ export default function Inventory() {
     purchaseOrders,
     suppliers,
     stockCounts,
+    locations = [],
+    addLocation,
+    bikeModels = [],
+    addBikeModel,
+    fitmentMappings = [],
+    addFitmentMapping,
+    approvalRequests = [],
+    requestApproval,
+    resolveApprovalRequest,
+    purchaseRequisitions = [],
+    createPurchaseRequisition,
+    resolvePurchaseRequisition,
+    supplierQuotes = [],
+    createSupplierQuote,
+    awardSupplierQuote,
+    inboundContainers = [],
+    createInboundContainer,
+    updateInboundContainer,
     addInventoryItem,
     adjustInventoryStock,
     updateInventoryReservation,
@@ -68,6 +91,9 @@ export default function Inventory() {
   const [tab, setTab] = useState('catalogue')
   const [search, setSearch] = useState('')
   const [velocityFilter, setVelocityFilter] = useState('all')
+  const [abcFilter, setAbcFilter] = useState('all')
+  const [showBarcodeSheet, setShowBarcodeSheet] = useState(false)
+  const [rfqAwardQty, setRfqAwardQty] = useState(15)
   const [showAddSku, setShowAddSku] = useState(false)
   const [showImportCsv, setShowImportCsv] = useState(false)
   const [csvText, setCsvText] = useState(
@@ -90,14 +116,20 @@ export default function Inventory() {
   const branchMovements = stockMovements.filter(m => m.branchId === activeBranchId)
   const branchCounts = stockCounts.filter(c => c.branchId === activeBranchId)
   const pendingCounts = branchCounts.filter(c => c.status === 'PendingApproval')
+  const branchLocations = locations.filter(l => !l.branchId || l.branchId === activeBranchId)
+  const stockAdjustmentApprovals = approvalRequests.filter(a => a.requestType === 'stock_adjustment')
+  const rankedRfqs = scoreAndRankRfqs(supplierQuotes, suppliers)
+  const abcMap = classifyAbcInventory(branchRawItems, branchMovements)
 
   const branchItems = branchRawItems
     .map(item => ({
       ...item,
       metrics: classifyStockVelocity(item),
       stockView: computeAvailableStock(item),
+      abcTier: abcMap[item.id]?.abcTier || 'C',
     }))
     .filter(item => velocityFilter === 'all' || item.metrics.velocity === velocityFilter)
+    .filter(item => abcFilter === 'all' || item.abcTier === abcFilter)
     .filter(item => {
       const q = search.trim().toLowerCase()
       if (!q) return true
@@ -394,20 +426,129 @@ export default function Inventory() {
     }
   }
 
+  async function handleStockAdjustmentProposal(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const itemId = form.get('itemId')
+    const reasonCode = form.get('reasonCode')
+    const delta = Math.trunc(Number(form.get('quantityDelta') || 0))
+    const notes = String(form.get('notes') || '').trim()
+    const sku = branchRawItems.find(i => i.id === itemId)
+    if (!sku || !delta) return
+    setBusy(true)
+    setError('')
+    try {
+      await requestApproval({
+        requestType: 'stock_adjustment',
+        summary: `${reasonCode.toUpperCase()} ${delta > 0 ? `+${delta}` : delta} on ${sku.partNumber} (${notes || 'Branch adjustment'})`,
+        requestedRole: context.role,
+        payload: { itemId, quantityDelta: delta, reasonCode, notes },
+      })
+      event.currentTarget.reset()
+      setNotice('Stock adjustment request queued for manager approval.')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleAddLocation(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    addLocation({
+      name: form.get('name'),
+      kind: form.get('kind'),
+      code: form.get('code'),
+      branchId: activeBranchId,
+    })
+    event.currentTarget.reset()
+    setNotice('Storage location / bin added.')
+  }
+
+  async function handleAddBikeModel(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    addBikeModel({
+      make: form.get('make'),
+      model: form.get('model'),
+      variant: form.get('variant'),
+      engineCc: form.get('engineCc'),
+      yearRange: form.get('yearRange'),
+    })
+    event.currentTarget.reset()
+    setNotice('Motorcycle model registered.')
+  }
+
+  async function handleAddFitment(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    addFitmentMapping({
+      partNumber: form.get('partNumber'),
+      bikeModelId: form.get('bikeModelId'),
+      position: form.get('position'),
+      confidence: form.get('confidence'),
+      oemCode: form.get('oemCode'),
+    })
+    event.currentTarget.reset()
+    setNotice('Part-to-bike fitment mapping saved.')
+  }
+
+  async function handleCreateRequisition(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await createPurchaseRequisition({
+      itemsSummary: form.get('itemsSummary'),
+      estimatedCost: form.get('estimatedCost'),
+    })
+    event.currentTarget.reset()
+    setNotice('Purchase requisition created.')
+  }
+
+  async function handleCreateRfqQuote(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await createSupplierQuote({
+      rfqRef: form.get('rfqRef'),
+      supplierId: form.get('supplierId'),
+      partNumber: form.get('partNumber'),
+      quotedUnitPrice: form.get('quotedUnitPrice'),
+      leadTimeDays: form.get('leadTimeDays'),
+      paymentTerms: form.get('paymentTerms'),
+    })
+    event.currentTarget.reset()
+    setNotice('Supplier RFQ quote logged and scored.')
+  }
+
+  async function handleCreateContainer(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    await createInboundContainer({
+      containerNumber: form.get('containerNumber'),
+      originPort: form.get('originPort'),
+      shippingLine: form.get('shippingLine'),
+      etaDate: form.get('etaDate'),
+      itemsSummary: form.get('itemsSummary'),
+    })
+    event.currentTarget.reset()
+    setNotice('Inbound container booked.')
+  }
+
   return (
     <div className="stacked-pages">
-      <section className="card">
+      <section className="card no-print">
         <div className="card-head wrap-head">
           <div>
-            <p className="eyebrow">Parts Master, Procurement &amp; Stock Integrity</p>
+            <p className="eyebrow">Parts Master, Bins &amp; Fitment, Procurement &amp; Stock Integrity</p>
             <h2>Branch Inventory &amp; Supply Control</h2>
           </div>
           <div className="tab-strip" role="tablist" aria-label="Inventory sections">
             {[
               ['catalogue', `Parts Master (${branchRawItems.length})`],
+              ['locations', `Bins & Fitment (${branchLocations.length})`],
               ['reorder', `Reorder & Dead Stock (${reorderQueue.length})`],
-              ['procurement', `Procurement & GRN (${branchPOs.length})`],
-              ['counts', `Cycle Counts (${pendingCounts.length})`],
+              ['procurement', `Procurement, RFQ & Containers (${branchPOs.length})`],
+              ['counts', `Counts & Adjustments (${pendingCounts.length})`],
               ['fitment', 'OEM Search'],
             ].map(([id, label]) => (
               <button
@@ -451,30 +592,25 @@ export default function Inventory() {
           </div>
         </div>
 
-        {notice && (
-          <p className="notice" role="status" style={{ marginTop: '12px' }}>
-            {notice}
-          </p>
-        )}
-        {error && (
-          <p className="form-error" role="alert" style={{ marginTop: '12px' }}>
-            {error}
-          </p>
-        )}
+        {notice && <p className="notice mt-md" role="status">{notice}</p>}
+        {error && <p className="form-error mt-md" role="alert">{error}</p>}
       </section>
 
       {tab === 'catalogue' && (
         <section className="card">
-          <div className="card-head wrap-head">
+          <div className="card-head wrap-head no-print">
             <div>
-              <h2>Parts Master &amp; Bin Ledger</h2>
+              <h2>Parts Master, ABC Tiers &amp; Bin Ledger</h2>
               <p className="muted">
-                Track OEM cross-references, quality grade, bin placement, UoM packs, and net available stock.
+                Track OEM cross-references, ABC value tier, bin placement, UoM packs, barcode labels, and net available stock.
               </p>
             </div>
             <div className="inline-controls">
               <button type="button" onClick={exportValuationCsv}>
                 Export Valuation CSV
+              </button>
+              <button type="button" onClick={() => setShowBarcodeSheet(v => !v)}>
+                {showBarcodeSheet ? 'Hide Barcode Labels' : 'Print Barcode Labels'}
               </button>
               <button type="button" onClick={() => setShowImportCsv(v => !v)}>
                 {showImportCsv ? 'Close CSV Import' : 'Import CSV'}
@@ -485,8 +621,36 @@ export default function Inventory() {
             </div>
           </div>
 
+          {showBarcodeSheet && (
+            <div className="sub-card mb-md">
+              <div className="card-head wrap-head no-print">
+                <strong>Printable Shelf &amp; Packet Barcode Sheet (INV-021)</strong>
+                <button type="button" className="primary btn-sm" onClick={() => window.print()}>
+                  Print Labels
+                </button>
+              </div>
+              <div className="barcode-sheet">
+                {branchItems.map(item => (
+                  <div className="barcode-label-card" key={`bc-${item.id}`}>
+                    <strong>{item.partName}</strong>
+                    <small className="mono">{item.partNumber} · Bin {item.binLocation || 'UNASSIGNED'}</small>
+                    <div className="barcode-bars" aria-hidden="true">
+                      {(item.barcode || item.partNumber).split('').slice(0, 14).map((ch, idx) => (
+                        <span key={idx} className={ch.charCodeAt(0) % 2 === 0 ? 'wide' : ''} />
+                      ))}
+                    </div>
+                    <div className="card-head">
+                      <span className="mono">{item.barcode || item.partNumber}</span>
+                      <strong>{formatMoney(item.retailPrice)}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {showImportCsv && (
-            <div className="sub-card" style={{ marginBottom: '12px' }}>
+            <div className="sub-card mb-md no-print">
               <strong>Bulk Catalogue CSV Import &amp; Duplicate Detection (CAT-010 / CAT-012)</strong>
               <p className="muted">Columns: partNumber,partName,category,brand,barcode,unitCost,retailPrice,stockQuantity,reorderLevel,compatibleModels</p>
               <textarea rows={4} value={csvText} onChange={e => setCsvText(e.target.value)} />
@@ -508,7 +672,7 @@ export default function Inventory() {
             </div>
           )}
 
-          <div className="filter-bar">
+          <div className="filter-bar no-print">
             <label>
               Search SKU, Barcode, OEM Cross-Ref, or Bike Model
               <input
@@ -528,6 +692,15 @@ export default function Inventory() {
                 <option value="dead">Dead Stock</option>
               </select>
             </label>
+            <label>
+              ABC Tier (INV-017)
+              <select value={abcFilter} onChange={e => setAbcFilter(e.target.value)}>
+                <option value="all">All ABC Tiers</option>
+                <option value="A">Class A (Top 80% Value)</option>
+                <option value="B">Class B (Next 15%)</option>
+                <option value="C">Class C (Long Tail 5%)</option>
+              </select>
+            </label>
             <span className="muted tabular">Showing {branchItems.length} SKU(s)</span>
           </div>
 
@@ -542,7 +715,7 @@ export default function Inventory() {
                   <tr>
                     <th>Part &amp; Fitment</th>
                     <th>Bin &amp; UoM</th>
-                    <th>Velocity</th>
+                    <th>Velocity &amp; ABC</th>
                     <th className="num">On Hand / Avail</th>
                     <th className="num">Cost / Retail</th>
                     <th className="num">Actions</th>
@@ -570,9 +743,14 @@ export default function Inventory() {
                         </span>
                       </td>
                       <td>
-                        <span className={velocityTagClass(row.metrics.velocity)}>
-                          {row.metrics.velocity.toUpperCase()}
-                        </span>
+                        <div className="inline-controls">
+                          <span className={velocityTagClass(row.metrics.velocity)}>
+                            {row.metrics.velocity.toUpperCase()}
+                          </span>
+                          <span className={`abc-badge abc-badge-${row.abcTier.toLowerCase()}`}>
+                            ABC-{row.abcTier}
+                          </span>
+                        </div>
                       </td>
                       <td className="num">
                         <strong>{row.stockView.onHand}</strong>
@@ -700,6 +878,150 @@ export default function Inventory() {
             </form>
           )}
         </section>
+      )}
+
+      {tab === 'locations' && (
+        <div className="stacked-pages">
+          <div className="dashboard-grid">
+            <section className="card">
+              <h2>Storage Locations &amp; Bin Registry (PLT-004)</h2>
+              <div className="saas-table-wrap">
+                <table className="saas-table">
+                  <thead>
+                    <tr>
+                      <th>Bin Code</th>
+                      <th>Zone / Location Name</th>
+                      <th>Kind</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {branchLocations.map(loc => (
+                      <tr key={loc.id}>
+                        <td className="mono">{loc.code}</td>
+                        <td className="cell-title">{loc.name}</td>
+                        <td><span className="status-tag muted">{loc.kind}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <form className="inventory-form" onSubmit={handleAddLocation}>
+                <h3>Add Storage Bin / Shelf</h3>
+                <div className="form-grid">
+                  <label>Bin Code<input name="code" required placeholder="B2-R08" /></label>
+                  <label>Location Name<input name="name" required placeholder="Electrical & Coils Shelf B2" /></label>
+                  <label>
+                    Location Kind
+                    <select name="kind" defaultValue="Shop Shelf">
+                      <option value="Shop Shelf">Shop Shelf</option>
+                      <option value="Backroom">Backroom</option>
+                      <option value="Godown Bay">Godown Bay</option>
+                      <option value="Counter Display">Counter Display</option>
+                    </select>
+                  </label>
+                </div>
+                <button className="primary" type="submit">Add Location</button>
+              </form>
+            </section>
+
+            <section className="card">
+              <h2>Motorcycle Models Registry (CAT-003)</h2>
+              <div className="saas-table-wrap">
+                <table className="saas-table">
+                  <thead>
+                    <tr>
+                      <th>Make &amp; Model</th>
+                      <th>Variant</th>
+                      <th className="num">Engine CC</th>
+                      <th>Years</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bikeModels.map(bk => (
+                      <tr key={bk.id}>
+                        <td className="cell-title">{bk.make} {bk.model}</td>
+                        <td>{bk.variant || 'Standard'}</td>
+                        <td className="num">{bk.engineCc}cc</td>
+                        <td className="mono">{bk.yearRange}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <form className="inventory-form" onSubmit={handleAddBikeModel}>
+                <h3>Register Motorcycle Model</h3>
+                <div className="form-grid">
+                  <label>Make<input name="make" required placeholder="Bajaj / TVS / Honda" /></label>
+                  <label>Model<input name="model" required placeholder="Boxer BM150" /></label>
+                  <label>Variant<input name="variant" placeholder="HD / X125" /></label>
+                  <label>Engine CC<input name="engineCc" type="number" defaultValue="150" /></label>
+                  <label>Year Range<input name="yearRange" defaultValue="2018–2026" /></label>
+                </div>
+                <button className="primary" type="submit">Save Bike Model</button>
+              </form>
+            </section>
+          </div>
+
+          <section className="card">
+            <h2>Part-to-Bike Fitment &amp; OEM Equivalence Matrix (CAT-004 / CAT-005)</h2>
+            <div className="saas-table-wrap">
+              <table className="saas-table">
+                <thead>
+                  <tr>
+                    <th>Part Number</th>
+                    <th>Motorcycle Fitment</th>
+                    <th>Position</th>
+                    <th>OEM Ref</th>
+                    <th>Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fitmentMappings.map(fm => (
+                    <tr key={fm.id}>
+                      <td className="mono">{fm.partNumber}</td>
+                      <td className="cell-title">{fm.bikeLabel}</td>
+                      <td>{fm.position}</td>
+                      <td className="mono">{fm.oemCode || '—'}</td>
+                      <td><span className="status-tag ok">{FITMENT_LABELS[fm.confidence] || fm.confidence}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <form className="inventory-form" onSubmit={handleAddFitment}>
+              <h3>Map SKU to Motorcycle Fitment</h3>
+              <div className="form-grid">
+                <label>
+                  Part Number
+                  <select name="partNumber" required>
+                    {branchRawItems.map(sku => (
+                      <option key={sku.id} value={sku.partNumber}>{sku.partNumber} — {sku.partName}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Motorcycle Model
+                  <select name="bikeModelId" required>
+                    {bikeModels.map(bk => (
+                      <option key={bk.id} value={bk.id}>{bk.make} {bk.model}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>Assembly Position<input name="position" defaultValue="Direct Replacement" /></label>
+                <label>OEM Cross-Ref Code<input name="oemCode" placeholder="36DU1007" /></label>
+                <label>
+                  Fitment Confidence
+                  <select name="confidence" defaultValue="verified_fit">
+                    <option value="verified_fit">Verified Fit</option>
+                    <option value="likely_fit">Likely Fit</option>
+                    <option value="requires_confirmation">Requires Confirmation</option>
+                  </select>
+                </label>
+              </div>
+              <button className="primary" type="submit" disabled={!branchRawItems.length || !bikeModels.length}>Save Fitment Link</button>
+            </form>
+          </section>
+        </div>
       )}
 
       {tab === 'reorder' && (
@@ -880,7 +1202,7 @@ export default function Inventory() {
                           <span>— {po.supplierName}</span>
                           <span className={poStatusTagClass(po.status)}>{po.status}</span>
                         </div>
-                        <p className="muted" style={{ marginTop: '4px' }}>
+                        <p className="muted mt-xs">
                           {po.itemsSummary}
                         </p>
                         <small className="muted tabular">
@@ -1139,6 +1461,141 @@ export default function Inventory() {
               </button>
             </form>
           </section>
+
+          <div className="dashboard-grid">
+            <section className="card">
+              <h2>Purchase Requisitions (PRC-002)</h2>
+              <p className="muted">Stage internal branch restock requests and convert approved requisitions directly into Purchase Orders.</p>
+              <div className="po-list mt-md">
+                {purchaseRequisitions.map(pr => (
+                  <article className="sub-card" key={pr.id}>
+                    <div className="card-head wrap-head">
+                      <div>
+                        <strong className="mono">{pr.reqNumber}</strong>
+                        <p className="muted">{pr.itemsSummary} · Est. {formatMoney(pr.estimatedCost)} · By {pr.requestedBy}</p>
+                      </div>
+                      <div className="inline-controls">
+                        <span className={pr.status === 'ConvertedToPO' ? 'status-tag ok' : pr.status === 'Rejected' ? 'status-tag danger' : 'status-tag warn'}>
+                          {pr.status}
+                        </span>
+                        {pr.status === 'PendingApproval' && (
+                          <>
+                            <button type="button" className="primary btn-sm" onClick={() => void resolvePurchaseRequisition(pr.id, 'ConvertedToPO')}>
+                              Convert to PO
+                            </button>
+                            <button type="button" className="btn-sm" onClick={() => void resolvePurchaseRequisition(pr.id, 'Rejected')}>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <form className="inventory-form" onSubmit={e => void handleCreateRequisition(e)}>
+                <h3>Raise Purchase Requisition</h3>
+                <div className="form-grid">
+                  <label>Items Requested<input name="itemsSummary" required placeholder="HLX-CHN-KIT x 20, NGK-CR8E x 50" /></label>
+                  <label>Estimated Cost (KES)<input name="estimatedCost" type="number" min="1" defaultValue="18000" required /></label>
+                </div>
+                <button className="primary" type="submit">Submit Requisition</button>
+              </form>
+            </section>
+
+            <section className="card">
+              <h2>Supplier RFQs &amp; Ranked Award (PRC-003)</h2>
+              <p className="muted">Compare supplier quotes ranked by reliability score, lead time, and quoted unit price.</p>
+              <div className="filter-bar mt-sm">
+                <label>
+                  Award PO Quantity
+                  <input type="number" min="1" value={rfqAwardQty} onChange={e => setRfqAwardQty(Math.max(1, Number(e.target.value) || 1))} />
+                </label>
+              </div>
+              <div className="po-list">
+                {rankedRfqs.map(q => (
+                  <article className="sub-card" key={q.id}>
+                    <div className="card-head wrap-head">
+                      <div>
+                        <strong className="mono">{q.rfqRef} · {q.partNumber}</strong>
+                        <p className="muted">
+                          {q.supplierName} · <strong>{formatMoney(q.quotedUnitPrice)}</strong>/unit · {q.leadTimeDays}d · Score {q.combinedScore}
+                        </p>
+                      </div>
+                      {q.status === 'Submitted' ? (
+                        <button type="button" className="primary btn-sm" onClick={() => void awardSupplierQuote(q.id, rfqAwardQty)}>
+                          Award &amp; Draft PO
+                        </button>
+                      ) : (
+                        <span className="status-tag ok">{q.status}</span>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <form className="inventory-form" onSubmit={e => void handleCreateRfqQuote(e)}>
+                <h3>Log Supplier Quote</h3>
+                <div className="form-grid">
+                  <label>RFQ Ref<input name="rfqRef" required placeholder="RFQ-2026-09" /></label>
+                  <label>
+                    Supplier
+                    <select name="supplierId">
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>{s.supplierName}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>SKU / Part<input name="partNumber" required placeholder="BJ-CSK-150" /></label>
+                  <label>Unit Quote (KES)<input name="quotedUnitPrice" type="number" min="1" required /></label>
+                  <label>Lead Time (Days)<input name="leadTimeDays" type="number" min="0" defaultValue="2" /></label>
+                  <label>Payment Terms<input name="paymentTerms" defaultValue="Net 14" /></label>
+                </div>
+                <button className="primary" type="submit">Log Quote</button>
+              </form>
+            </section>
+          </div>
+
+          <section className="card">
+            <h2>Inbound Import Container Tracking (PRC-011)</h2>
+            <p className="muted">Track sea &amp; Mombasa corridor container milestones from Booking through Godown Receipt.</p>
+            <div className="po-list mt-md">
+              {inboundContainers.map(cnt => {
+                const currentIdx = CONTAINER_STAGE_ORDER.indexOf(cnt.status)
+                const nextStage = currentIdx >= 0 && currentIdx < CONTAINER_STAGE_ORDER.length - 1 ? CONTAINER_STAGE_ORDER[currentIdx + 1] : null
+                return (
+                  <article className="sub-card" key={cnt.id}>
+                    <div className="card-head wrap-head">
+                      <div>
+                        <strong className="mono">{cnt.containerNumber}</strong> — {cnt.originPort} ({cnt.shippingLine || 'Freight'}) · ETA {cnt.etaDate || 'TBD'}
+                        <p className="muted">{cnt.itemsSummary}</p>
+                        <div className="container-stages">
+                          {CONTAINER_STAGE_ORDER.map(st => (
+                            <span key={st} className={st === cnt.status ? 'status-tag ok' : 'status-tag muted'}>{st}</span>
+                          ))}
+                        </div>
+                      </div>
+                      {nextStage && (
+                        <button type="button" className="primary btn-sm" onClick={() => void updateInboundContainer(cnt.id, nextStage)}>
+                          Advance to {nextStage}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+            <form className="inventory-form" onSubmit={e => void handleCreateContainer(e)}>
+              <h3>Book Inbound Container</h3>
+              <div className="form-grid">
+                <label>Container #<input name="containerNumber" required placeholder="MSKU4412980" /></label>
+                <label>Origin Port<input name="originPort" required placeholder="Mumbai (Nhava Sheva)" /></label>
+                <label>Shipping Line<input name="shippingLine" placeholder="Maersk Kenya" /></label>
+                <label>ETA Date<input name="etaDate" type="date" /></label>
+                <label>Cargo Summary<input name="itemsSummary" required placeholder="Boxer Sprockets x400, Stators x250" /></label>
+              </div>
+              <button className="primary" type="submit">Track Inbound Container</button>
+            </form>
+          </section>
         </div>
       )}
 
@@ -1261,6 +1718,74 @@ export default function Inventory() {
           <section className="card">
             <div className="card-head wrap-head">
               <div>
+                <h2>Approval-Gated Stock Adjustments (INV-007)</h2>
+                <p className="muted">Record damage, loss, theft, or manual stock corrections via dual-control manager approval.</p>
+              </div>
+              <span className="status-tag warn">
+                {stockAdjustmentApprovals.filter(a => a.status === 'PendingApproval').length} Pending Approval
+              </span>
+            </div>
+            {stockAdjustmentApprovals.length > 0 && (
+              <div className="po-list mt-sm">
+                {stockAdjustmentApprovals.map(req => (
+                  <article className="sub-card" key={req.id}>
+                    <div className="card-head wrap-head">
+                      <div>
+                        <strong>{req.summary}</strong>
+                        <p className="muted">Requested by {req.requestedBy} ({req.requestedRole})</p>
+                      </div>
+                      <div className="inline-controls">
+                        <span className={req.status === 'Approved' ? 'status-tag ok' : req.status === 'Rejected' ? 'status-tag danger' : 'status-tag warn'}>
+                          {req.status}
+                        </span>
+                        {req.status === 'PendingApproval' && (
+                          <>
+                            <button type="button" className="primary btn-sm" onClick={() => void resolveApprovalRequest(req.id, true, { approverRole: context.role })}>
+                              Approve &amp; Adjust
+                            </button>
+                            <button type="button" className="btn-sm" onClick={() => void resolveApprovalRequest(req.id, false, { approverRole: context.role })}>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+            <form className="inventory-form" onSubmit={e => void handleStockAdjustmentProposal(e)}>
+              <h3>Request Stock Adjustment</h3>
+              <div className="form-grid">
+                <label>
+                  SKU
+                  <select name="itemId" required>
+                    {branchRawItems.map(sku => (
+                      <option key={sku.id} value={sku.id}>{sku.partNumber} — {sku.partName}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Reason Code
+                  <select name="reasonCode" defaultValue="damage">
+                    <option value="damage">Damaged in Handling</option>
+                    <option value="loss">Unexplained Loss / Shrinkage</option>
+                    <option value="theft">Suspected Theft</option>
+                    <option value="correction">Opening Balance Correction</option>
+                  </select>
+                </label>
+                <label>Quantity Delta (-/+ units)<input name="quantityDelta" type="number" defaultValue="-1" required /></label>
+                <label>Reason Note<input name="notes" required placeholder="Cracked glass lens during shelf reorganization" /></label>
+              </div>
+              <button className="primary" type="submit" disabled={busy || !branchRawItems.length}>
+                Submit Adjustment Request
+              </button>
+            </form>
+          </section>
+
+          <section className="card">
+            <div className="card-head wrap-head">
+              <div>
                 <h2>Immutable Stock Movement Ledger</h2>
                 <p className="muted">Signed audit trail across POS sales, GRN receipts, damages, transfers, and approved count variances.</p>
               </div>
@@ -1321,7 +1846,7 @@ export default function Inventory() {
       {tab === 'fitment' && (
         <section className="card">
           <h2>Verify OEM Part Cross-Reference &amp; Market Pricing (Google Search)</h2>
-          <p className="muted" style={{ marginTop: '4px' }}>
+          <p className="muted mt-xs">
             Verify cross-bike fitment codes and Kenya street pricing using live Google Search grounding.
           </p>
           <form onSubmit={verifyPartFitment} className="inline-search-form">

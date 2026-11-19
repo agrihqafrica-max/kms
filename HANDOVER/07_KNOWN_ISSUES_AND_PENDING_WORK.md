@@ -1,12 +1,11 @@
 # 07 — Known Issues and Pending Work
 
 ## Current blockers — 2026-11-19 (supersedes resolved frontend gaps below)
-1. Mandatory independent security re-review is NOT APPROVED: the latest reviewer failed to start with provider 403. The two latest auth-race corrections have local regression evidence, not independent closure. Keep the slice and release gate open.
-2. TC-41–TC-46 remain PARTIAL. Live Supabase/browser isolation, controlled-mailbox recovery, visual/mobile/accessibility and performance acceptance are incomplete (05 contains the AC matrix).
-3. Auth forms, React Router, configured API client and read-only Overview/POS/Radar views now exist. Organisation onboarding, cart/checkout, offline trading and remaining workflow pages are still missing; never demonstrate them as complete.
-4. Foundation ADR-001/003 remain BLOCKED under D-032; offline encryption is BLOCKED under D-028. No foundation migration is authorized by this checkpoint.
-5. CI configuration exists, but hosted CI/staging are unverified and frontend unit tests are not in its job. No production action is authorized. A provider request that never settles keeps authentication/sign-out gated; do not force-enable another account.
-6. Publish only the review-pending feature branch and allowed files. Keep ignored files and blocked foundation drafts local; leave remote main unchanged.
+1. **Master Inventory Audit (`docs/traceability/function-traceability.md`)**: Across 279 functions, P0/P1/P2 have **103 Complete** and **43 Blocked** (with 133 P3–P8 functions Deferred). See `docs/release/PHASE_0_1_2_BACKLOG.md` and `HANDOVER/06` `D-034` for the open flags.
+2. **Mandatory independent security re-review** remains **NOT APPROVED** (`SEC-011`) and full WCAG AA / 360px accessibility certification (`UX-011`, `TC-46`) is unexecuted. Phase 0, Phase 1, and Phase 2 gates stay open.
+3. **Auth / Mail / Offline Encryption / Dual-Backend Decisions**: `TC-44` live mailbox recovery, WhatsApp Cloud API, SMS gateway, and cloud storage buckets (`0` provisioned) remain unconfigured. Offline browser encryption stays **BLOCKED** under `D-028` (`SEC-002`, `UX-002`, `POS-008`), foundation ADR-001/003 remain **BLOCKED** under `D-032` (`PLT-001`, `FIN-002`), and `sw.js` requires native Kiswahili review under `D-027` (`UX-012`).
+4. **CI / Staging**: `.github/workflows/ci.yml` still lacks frontend `npm test` and Firestore rules checks, and hosted CI/staging (`PLT-008`, `OPS-006`, `OPS-007`) are unverified. No production action or migration is authorized without rollback plan and explicit owner sign-off.
+
 
 ## Historical issue snapshot
 The list below preserves the inherited issues. Resolved frontend/no-Git/no-CI statements are superseded by the current blockers above and D-033; old database observations are not fresh evidence.

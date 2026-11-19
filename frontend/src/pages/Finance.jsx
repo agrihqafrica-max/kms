@@ -40,6 +40,9 @@ export default function Finance() {
   const [busy, setBusy] = useState(false)
   const [cashCounted, setCashCounted] = useState('')
   const [eodResult, setEodResult] = useState(null)
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -59,11 +62,33 @@ export default function Finance() {
     etimsInvoices,
     journalEntries,
     branchId: activeBranchId,
+    startDate,
+    endDate,
   })
-  const salesRep = buildSalesReport({ sales, salesReturns, branchId: activeBranchId })
-  const profitRep = buildProfitCogsReport({ sales, expenses, stockMovements, inventory, branchId: activeBranchId })
-  const cashRep = buildCashReconciliationReport({ drawerShifts, branchId: activeBranchId })
-  const stockRep = buildStockReport({ inventory, branchId: activeBranchId })
+  const salesRep = buildSalesReport({
+    sales,
+    salesReturns,
+    branchId: activeBranchId,
+    startDate,
+    endDate,
+    paymentMethod: paymentMethodFilter,
+  })
+  const profitRep = buildProfitCogsReport({
+    sales,
+    expenses,
+    stockMovements,
+    inventory,
+    branchId: activeBranchId,
+    startDate,
+    endDate,
+  })
+  const cashRep = buildCashReconciliationReport({
+    drawerShifts,
+    branchId: activeBranchId,
+    startDate,
+    endDate,
+  })
+  const stockRep = buildStockReport({ inventory, stockMovements, branchId: activeBranchId })
   const purchaseRep = buildPurchaseReport({ purchaseOrders, suppliers, branchId: activeBranchId })
 
   async function submitExpense(event) {
@@ -168,8 +193,8 @@ export default function Finance() {
           <div className="stat-card"><p>Balanced Journals</p><h3>{branchJournals.length}</h3><small>100% Debit == Credit</small></div>
         </div>
 
-        {message && <p className="notice" role="status" style={{ marginTop: '12px' }}>{message}</p>}
-        {error && <p className="form-error" role="alert" style={{ marginTop: '12px' }}>{error}</p>}
+        {message && <p className="notice mt-md" role="status">{message}</p>}
+        {error && <p className="form-error mt-md" role="alert">{error}</p>}
       </section>
 
       {tab === 'eod' && (
@@ -200,7 +225,7 @@ export default function Finance() {
                 <label>Description<input name="description" placeholder="Optional note" /></label>
                 <button className="primary" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Record Expense & Post JE'}</button>
               </form>
-              <ul className="draft-list" style={{ marginTop: '16px' }}>
+              <ul className="draft-list mt-lg">
                 {branchExpenses.slice(0, 6).map(exp => (
                   <li key={exp.id}>
                     <div>
@@ -224,7 +249,7 @@ export default function Finance() {
                 <button className="primary" type="submit">Close EOD &amp; Log Variance</button>
               </form>
               {eodResult && (
-                <div className="sub-card" style={{ marginTop: '14px' }}>
+                <div className="sub-card mt-md">
                   <strong>EOD Summary ({eodResult.date})</strong>
                   <p>Expected Cash: {formatMoney(eodResult.expectedDrawerCash)} · Counted: {formatMoney(eodResult.counted)}</p>
                   <p>Variance: <strong className={eodResult.variance < 0 ? 'form-error' : ''}>{formatMoney(eodResult.variance)}</strong></p>
@@ -364,6 +389,42 @@ export default function Finance() {
             </button>
           </div>
 
+          <div className="filter-bar">
+            <label>
+              Start Date (Nairobi EAT)
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </label>
+            <label>
+              End Date (Nairobi EAT)
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </label>
+            <label>
+              Payment Method Filter
+              <select value={paymentMethodFilter} onChange={e => setPaymentMethodFilter(e.target.value)}>
+                <option value="all">All Tender Methods</option>
+                <option value="cash">Cash</option>
+                <option value="mobile_money_reference">M-Pesa / Mobile Money</option>
+                <option value="bank_reference">Bank Transfer</option>
+                <option value="card_reference">Card</option>
+                <option value="credit">Approved Credit</option>
+                <option value="split">Split Tender</option>
+              </select>
+            </label>
+            {(startDate || endDate || paymentMethodFilter !== 'all') && (
+              <button
+                type="button"
+                className="btn-sm"
+                onClick={() => {
+                  setStartDate('')
+                  setEndDate('')
+                  setPaymentMethodFilter('all')
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+
           <div className="dashboard-grid">
             <article className="sub-card">
               <strong>RPT-002 · Daily Business Summary</strong>
@@ -392,14 +453,14 @@ export default function Finance() {
           </div>
 
           <div className="card-head wrap-head section-divider">
-            <h3>RPT-006 · Branch Stock On-Hand &amp; Valuation ({stockRep.length} SKUs)</h3>
+            <h3>RPT-006 · Branch Stock On-Hand, ABC Tier &amp; Valuation ({stockRep.length} SKUs)</h3>
             <button
               type="button"
               onClick={() =>
                 downloadCsv(
                   `kenyamoto-stock-report-${activeBranchId}.csv`,
-                  ['PartNumber', 'PartName', 'Bin', 'OnHand', 'Reserved', 'Available', 'CostValueKES', 'RetailValueKES'],
-                  stockRep.map(r => [r.partNumber, r.partName, r.binLocation, r.onHand, r.reserved, r.available, r.costValue, r.retailValue]),
+                  ['PartNumber', 'PartName', 'AbcTier', 'Bin', 'OnHand', 'Reserved', 'Available', 'CostValueKES', 'RetailValueKES'],
+                  stockRep.map(r => [r.partNumber, r.partName, r.abcTier, r.binLocation, r.onHand, r.reserved, r.available, r.costValue, r.retailValue]),
                 )
               }
             >
@@ -410,7 +471,7 @@ export default function Finance() {
             <table className="saas-table">
               <thead>
                 <tr>
-                  <th>SKU</th>
+                  <th>SKU &amp; ABC</th>
                   <th>Bin</th>
                   <th className="num">On Hand / Avail</th>
                   <th className="num">Cost Value</th>
@@ -420,7 +481,12 @@ export default function Finance() {
               <tbody>
                 {stockRep.map(row => (
                   <tr key={row.partNumber}>
-                    <td><span className="mono">{row.partNumber}</span> · {row.partName}</td>
+                    <td>
+                      <span className="mono">{row.partNumber}</span> · {row.partName}{' '}
+                      <span className={`abc-badge abc-badge-${String(row.abcTier || 'c').toLowerCase()}`}>
+                        {row.abcTier}
+                      </span>
+                    </td>
                     <td className="mono">{row.binLocation}</td>
                     <td className="num">{row.onHand} ({row.available} avail)</td>
                     <td className="num">{formatMoney(row.costValue)}</td>

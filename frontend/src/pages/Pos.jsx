@@ -3,7 +3,7 @@ import { useTenant } from '../tenancy/context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney } from '../lib/format.js'
 import { addCartItem, setCartQuantity, removeCartItem } from './PosCart.js'
-import { computePosSaleTotals } from '../lib/kmsDomain.js'
+import { computePosSaleTotals, validateSplitPayments } from '../lib/kmsDomain.js'
 import { computeShiftReconciliation, evaluateDiscountApproval } from '../lib/platformGovernance.js'
 import { t } from '../i18n/index.js'
 
@@ -12,16 +12,20 @@ export default function Pos() {
   const {
     activeBranchId,
     complianceMode,
+    tenantSettings,
     inventory,
     sales = [],
     expenses = [],
     customers = [],
     salesReturns = [],
     drawerShifts = [],
+    approvalRequests = [],
     offlineMode,
     setOfflineMode,
     outbox,
+    outboxConflicts = [],
     syncOutbox,
+    resolveOutboxConflict,
     completePosCheckout,
     submitSalesReturn,
     resolveSalesReturn,
@@ -30,19 +34,28 @@ export default function Pos() {
     createCustomerProfile,
     updateCustomerConsent,
     sendWorkspaceNotification,
+    requestApproval,
+    resolveApprovalRequest,
   } = useWorkspace()
 
   const [tab, setTab] = useState('register')
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [cart, setCart] = useState([])
+  const [splitMode, setSplitMode] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [reference, setReference] = useState('')
+  const [splitPayments, setSplitPayments] = useState([
+    { method: 'cash', amount: '', reference: '' },
+    { method: 'mobile_money_reference', amount: '', reference: '' },
+  ])
   const [customerName, setCustomerName] = useState('')
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
   const [discountAmount, setDiscountAmount] = useState('0')
   const [busy, setBusy] = useState(false)
   const [receipt, setReceipt] = useState(null)
+  const [receiptEmail, setReceiptEmail] = useState('')
+  const [receiptEmailStatus, setReceiptEmailStatus] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [countedCash, setCountedCash] = useState('')
@@ -56,6 +69,7 @@ export default function Pos() {
   const branchReturns = salesReturns.filter(r => r.branchId === activeBranchId)
   const branchShifts = drawerShifts.filter(s => s.branchId === activeBranchId)
   const openShift = branchShifts.find(s => s.status === 'Open')
+  const discountApprovals = approvalRequests.filter(a => a.requestType === 'discount_override')
 
   const cashSales = sales
     .filter(s => s.branchId === activeBranchId && s.paymentMethod === 'cash')
@@ -81,6 +95,7 @@ export default function Pos() {
     return (
       item.partName.toLowerCase().includes(query) ||
       item.partNumber.toLowerCase().includes(query) ||
+      (item.barcode || '').toLowerCase().includes(query) ||
       (item.category || '').toLowerCase().includes(query) ||
       (item.compatibleModels || '').toLowerCase().includes(query)
     )
@@ -88,25 +103,102 @@ export default function Pos() {
 
   const totals = computePosSaleTotals(cart, Number(discountAmount || 0), complianceMode)
   const discountCheck = evaluateDiscountApproval(context.role, totals.subtotal, Number(discountAmount || 0))
+  const approvedDiscountOverride = discountApprovals.find(a => {
+    if (a.status !== 'Approved') return false
+    try {
+      const payload = JSON.parse(a.payloadJson || '{}')
+      return Number(payload.discountAmount || 0) >= Number(discountAmount || 0)
+    } catch {
+      return false
+    }
+  })
+  const canCheckoutDiscount = discountCheck.allowed || Boolean(approvedDiscountOverride)
+  const splitPreview = splitMode && cart.length ? validateSplitPayments(splitPayments, totals.totalAmount) : null
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId) || null
+
+  function handleBarcodeScanKey(event) {
+    if (event.key !== 'Enter') return
+    const token = search.trim().toLowerCase()
+    if (!token) return
+    const exactMatch = branchItems.find(
+      item =>
+        (item.barcode && item.barcode.toLowerCase() === token) ||
+        item.partNumber.toLowerCase() === token,
+    )
+    if (exactMatch && exactMatch.stockQuantity > 0) {
+      event.preventDefault()
+      setCart(current =>
+        addCartItem(current, {
+          id: exactMatch.id,
+          part_name: exactMatch.partName,
+          part_number: exactMatch.partNumber,
+          retail_price: exactMatch.retailPrice,
+          stock_quantity: exactMatch.stockQuantity,
+          unitCost: exactMatch.unitCost,
+        }),
+      )
+      setSearch('')
+      setNotice(`Barcode / SKU matched: added 1x ${exactMatch.partNumber} (${exactMatch.partName}).`)
+    }
+  }
+
+  function updateSplitLine(idx, patch) {
+    setSplitPayments(prev => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)))
+  }
+
+  async function handleRequestDiscountApproval() {
+    setBusy(true)
+    setError('')
+    try {
+      await requestApproval({
+        requestType: 'discount_override',
+        summary: `POS Discount ${discountCheck.discountPct}% (KES ${discountAmount}) on subtotal KES ${totals.subtotal}`,
+        requestedRole: context.role,
+        payload: {
+          subtotal: totals.subtotal,
+          discountAmount: Number(discountAmount || 0),
+          discountPct: discountCheck.discountPct,
+        },
+      })
+      setNotice('Discount override approval request submitted to manager queue.')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function checkout(event) {
     event.preventDefault()
     if (!cart.length || busy) return
-    if (!discountCheck.allowed) {
+    if (!canCheckoutDiscount) {
       setError(`Discount ${discountCheck.discountPct}% exceeds ${context.role} limit (${discountCheck.maxAllowedPct}%). Owner/manager approval required.`)
+      return
+    }
+    if (splitMode && splitPreview && !splitPreview.valid) {
+      setError(splitPreview.error)
       return
     }
     setBusy(true)
     setError('')
     setReceipt(null)
+    setReceiptEmailStatus('')
     try {
       const buyerLabel = selectedCustomer?.fullName || customerName
+      const cartSnapshot = cart.map(row => ({
+        partNumber: row.part_number,
+        partName: row.part_name,
+        quantity: Number(row.quantity || 1),
+        unitPrice: Number(row.retail_price || 0),
+      }))
       const result = await completePosCheckout({
         cart,
         discountAmount: Number(discountAmount || 0),
-        paymentMethod,
-        paymentReference: reference,
+        paymentMethod: splitMode ? splitPreview?.primaryMethod || 'split' : paymentMethod,
+        paymentReference: splitMode
+          ? splitPayments.map(p => p.reference).filter(Boolean).join(', ')
+          : reference,
+        payments: splitMode ? splitPayments : null,
         customerName: buyerLabel,
       })
       if (selectedCustomer) {
@@ -122,9 +214,13 @@ export default function Pos() {
         id: result.id,
         offlineQueued: result.offlineQueued,
         totals: result.totals,
-        paymentMethod,
+        items: cartSnapshot,
+        paymentMethod: splitMode ? splitPreview?.primaryMethod || 'split' : paymentMethod,
+        payments: splitMode ? splitPreview?.normalizedPayments || [] : [{ method: paymentMethod, amount: result.totals.totalAmount }],
+        changeDue: splitMode ? splitPreview?.changeDue || 0 : 0,
         customerName: buyerLabel.trim() || 'Walk-in Customer',
         complianceMode,
+        prefix: tenantSettings?.receiptPrefix || 'KMSP',
         timestamp: new Date().toLocaleTimeString(),
       })
       setCart([])
@@ -136,6 +232,31 @@ export default function Pos() {
       setError(failure.message || t('requestError'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleEmailReceipt() {
+    if (!receipt || !receiptEmail.trim()) return
+    setReceiptEmailStatus('Sending receipt…')
+    try {
+      const lineText = (receipt.items || [])
+        .map(l => `- ${l.partNumber} ${l.partName} x${l.quantity} = KES ${(l.quantity * l.unitPrice).toLocaleString()}`)
+        .join('\n')
+      const res = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: receiptEmail.trim(),
+          subject: `${receipt.prefix}-${receipt.id} · Official Spare Parts Receipt`,
+          text: `Receipt: ${receipt.id}\nCustomer: ${receipt.customerName}\nMethod: ${receipt.paymentMethod}\n\nItems:\n${lineText}\n\nTotal: KES ${receipt.totals.totalAmount.toLocaleString()}\nVAT: KES ${receipt.totals.vatAmount.toLocaleString()}`,
+          companyName: context.organization_name || 'Kenya Motorcycle Spare Parts General',
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.detail || 'Could not send email receipt.')
+      setReceiptEmailStatus(`Receipt emailed to ${data.to} via ${data.provider}.`)
+    } catch (err) {
+      setReceiptEmailStatus(err.message || 'Email delivery unavailable (configure SMTP or RESEND_API_KEY).')
     }
   }
 
@@ -223,7 +344,7 @@ export default function Pos() {
 
   return (
     <div className="stacked-pages">
-      <section className="card">
+      <section className="card no-print">
         <div className="card-head wrap-head">
           <div>
             <p className="eyebrow">Counter Operations, Returns, Drawer &amp; Customer Consent</p>
@@ -249,13 +370,13 @@ export default function Pos() {
             ))}
           </div>
         </div>
-        {notice && <p className="notice" role="status">{notice}</p>}
-        {error && <p className="form-error" role="alert">{error}</p>}
+        {notice && <p className="notice mt-md" role="status">{notice}</p>}
+        {error && <p className="form-error mt-md" role="alert">{error}</p>}
       </section>
 
       {tab === 'register' && (
         <section className="pos-layout">
-          <div className="card pos-products">
+          <div className="card pos-products no-print">
             <div className="card-head wrap-head">
               <div>
                 <h2>Spare Parts Quick Pick</h2>
@@ -282,14 +403,50 @@ export default function Pos() {
             </div>
 
             <label className="search-field">
-              Search by part name, SKU, or bike model
+              Search or Scan Barcode / SKU (Press Enter to Quick-Add)
               <input
                 type="search"
-                placeholder="e.g. Boxer, HLX, NGK, PZ26…"
+                placeholder="Scan barcode or search Boxer, HLX, NGK, PZ26…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
+                onKeyDown={handleBarcodeScanKey}
               />
             </label>
+
+            {outboxConflicts.length > 0 && (
+              <div className="sub-card mt-md">
+                <strong>Offline Outbox Conflict Queue ({outboxConflicts.length})</strong>
+                <p className="muted">Resolve price drift, stock shortage, or revoked-device conflicts before posting to ledger.</p>
+                <div className="po-list mt-sm">
+                  {outboxConflicts.map(conflict => (
+                    <div className="sub-card" key={conflict.idempotencyKey}>
+                      <div className="card-head wrap-head">
+                        <div>
+                          <span className="mono">{conflict.idempotencyKey}</span>
+                          <p className="form-error mt-xs">{(conflict.conflictReasons || []).join(' ')}</p>
+                        </div>
+                        <div className="inline-controls">
+                          <button
+                            type="button"
+                            className="primary btn-sm"
+                            onClick={() => void resolveOutboxConflict(conflict.idempotencyKey, 'accept_current')}
+                          >
+                            Re-price &amp; Sync
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-sm"
+                            onClick={() => void resolveOutboxConflict(conflict.idempotencyKey, 'discard')}
+                          >
+                            Discard
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {!visibleItems.length ? (
               <p className="state-panel">{query ? t('searchEmpty') : t('inventoryEmpty')}</p>
@@ -326,16 +483,25 @@ export default function Pos() {
           </div>
 
           <form className="card cart" onSubmit={checkout}>
-            <h2>Current Sale</h2>
+            <div className="card-head wrap-head no-print">
+              <h2>Current Sale</h2>
+              <button
+                type="button"
+                className={splitMode ? 'primary btn-sm' : 'btn-sm'}
+                onClick={() => setSplitMode(v => !v)}
+              >
+                {splitMode ? 'Split Tender On' : 'Split Payment'}
+              </button>
+            </div>
             {outbox.length > 0 && (
-              <p className="notice" role="status">
+              <p className="notice no-print" role="status">
                 {outbox.length} offline sale(s) saved locally awaiting sync.
               </p>
             )}
             {!cart.length ? (
-              <div className="cart-empty">Tap spare parts to build a fast counter receipt.</div>
+              <div className="cart-empty no-print">Tap spare parts or scan barcode to build a fast counter receipt.</div>
             ) : (
-              <div className="cart-lines">
+              <div className="cart-lines no-print">
                 {cart.map(row => (
                   <div className="cart-line" key={row.id}>
                     <div>
@@ -358,7 +524,7 @@ export default function Pos() {
               </div>
             )}
 
-            <div className="cart-inputs">
+            <div className="cart-inputs no-print">
               <label>
                 Registered Customer (Consent-Aware)
                 <select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)}>
@@ -386,30 +552,101 @@ export default function Pos() {
                   onChange={e => setDiscountAmount(e.target.value)}
                 />
               </label>
-              {discountCheck.requiresManagerApproval && (
-                <p className="form-error">
-                  {discountCheck.discountPct}% discount exceeds {context.role} approval limit ({discountCheck.maxAllowedPct}%).
-                </p>
+              {discountCheck.requiresManagerApproval && !approvedDiscountOverride && (
+                <div className="sub-card">
+                  <p className="form-error">
+                    {discountCheck.discountPct}% discount exceeds {context.role} approval limit ({discountCheck.maxAllowedPct}%).
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-sm mt-xs"
+                    disabled={busy || !cart.length}
+                    onClick={() => void handleRequestDiscountApproval()}
+                  >
+                    Request Manager Approval
+                  </button>
+                </div>
               )}
-              <label>
-                Payment Method
-                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                  <option value="cash">Cash</option>
-                  <option value="mobile_money_reference">M-Pesa / Mobile Money Ref</option>
-                  <option value="bank_reference">Bank Transfer Ref</option>
-                  <option value="card_reference">Card Ref</option>
-                  <option value="credit">Approved Wholesale Credit</option>
-                </select>
-              </label>
-              {paymentMethod !== 'cash' && paymentMethod !== 'credit' && (
-                <label>
-                  Payment Reference (M-Pesa Code / Ref)
-                  <input value={reference} onChange={e => setReference(e.target.value)} required />
-                </label>
+              {approvedDiscountOverride && (
+                <p className="notice">Manager discount override approved ({approvedDiscountOverride.resolvedBy}).</p>
+              )}
+
+              {!splitMode ? (
+                <>
+                  <label>
+                    Payment Method
+                    <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                      <option value="cash">Cash</option>
+                      <option value="mobile_money_reference">M-Pesa / Mobile Money Ref</option>
+                      <option value="bank_reference">Bank Transfer Ref</option>
+                      <option value="card_reference">Card Ref</option>
+                      <option value="credit">Approved Wholesale Credit</option>
+                    </select>
+                  </label>
+                  {paymentMethod !== 'cash' && paymentMethod !== 'credit' && (
+                    <label>
+                      Payment Reference (M-Pesa Code / Ref)
+                      <input value={reference} onChange={e => setReference(e.target.value)} required />
+                    </label>
+                  )}
+                </>
+              ) : (
+                <div className="split-tender-box">
+                  <div className="card-head wrap-head">
+                    <strong>Split-Tender Payments (POS-006)</strong>
+                    <button
+                      type="button"
+                      className="btn-sm"
+                      onClick={() => setSplitPayments(prev => [...prev, { method: 'card_reference', amount: '', reference: '' }])}
+                    >
+                      + Tender
+                    </button>
+                  </div>
+                  {splitPayments.map((line, idx) => (
+                    <div className="split-tender-row" key={`split-${idx}`}>
+                      <select
+                        aria-label={`Tender method ${idx + 1}`}
+                        value={line.method}
+                        onChange={e => updateSplitLine(idx, { method: e.target.value })}
+                      >
+                        <option value="cash">Cash</option>
+                        <option value="mobile_money_reference">M-Pesa Ref</option>
+                        <option value="bank_reference">Bank Ref</option>
+                        <option value="card_reference">Card Ref</option>
+                        <option value="credit">Credit</option>
+                      </select>
+                      <input
+                        aria-label={`Tender amount ${idx + 1}`}
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="KES"
+                        value={line.amount}
+                        onChange={e => updateSplitLine(idx, { amount: e.target.value })}
+                      />
+                      {splitPayments.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn-sm"
+                          onClick={() => setSplitPayments(prev => prev.filter((_, i) => i !== idx))}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {splitPreview && (
+                    <small className={splitPreview.valid ? 'muted' : 'form-error'}>
+                      {splitPreview.valid
+                        ? `Tendered ${formatMoney(splitPreview.totalTendered)}${splitPreview.changeDue > 0 ? ` · Cash Change ${formatMoney(splitPreview.changeDue)}` : ''}`
+                        : splitPreview.error}
+                    </small>
+                  )}
+                </div>
               )}
             </div>
 
-            <div className="totals">
+            <div className="totals no-print">
               <p>
                 <span>Subtotal</span>
                 <strong>{formatMoney(totals.subtotal)}</strong>
@@ -430,16 +667,90 @@ export default function Pos() {
               </p>
             </div>
 
-            <button className="primary checkout-btn" type="submit" disabled={!cart.length || busy || !discountCheck.allowed}>
+            <button
+              className="primary checkout-btn no-print"
+              type="submit"
+              disabled={!cart.length || busy || !canCheckoutDiscount || (splitMode && splitPreview && !splitPreview.valid)}
+            >
               {busy ? 'Recording…' : offlineMode ? 'Save Sale to Offline Outbox' : 'Complete Sale & Post Ledger'}
             </button>
 
+            {discountApprovals.filter(a => a.status === 'PendingApproval').length > 0 && (
+              <div className="sub-card mt-md no-print">
+                <strong>Pending Discount Override Queue</strong>
+                {discountApprovals
+                  .filter(a => a.status === 'PendingApproval')
+                  .map(req => (
+                    <div className="mt-xs" key={req.id}>
+                      <small>{req.summary} · by {req.requestedBy}</small>
+                      <div className="inline-controls mt-xs">
+                        <button
+                          type="button"
+                          className="primary btn-sm"
+                          onClick={() => void resolveApprovalRequest(req.id, true, { approverRole: context.role })}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-sm"
+                          onClick={() => void resolveApprovalRequest(req.id, false, { approverRole: context.role })}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+
             {receipt && (
-              <div className="receipt-box" role="status">
-                <strong>{receipt.offlineQueued ? 'Saved Offline (Queued)' : 'Digital Receipt & Balanced JE Issued'}</strong>
-                <p>Ref: {receipt.id}</p>
-                <p>Buyer: {receipt.customerName} · {receipt.paymentMethod}</p>
-                <p>Total: {formatMoney(receipt.totals.totalAmount)} ({receipt.timestamp})</p>
+              <div className="thermal-receipt mt-md" role="status">
+                <strong>{context.organization_name || 'Kenya Motorcycle Spare Parts General'}</strong>
+                <small>
+                  {receipt.offlineQueued ? 'Saved Offline (Queued)' : `Official Thermal Receipt · ${receipt.prefix}-${receipt.id}`}
+                </small>
+                <small>Buyer: {receipt.customerName} · {receipt.timestamp}</small>
+                <div className="thermal-receipt-lines">
+                  {(receipt.items || []).map((line, i) => (
+                    <div className="thermal-receipt-line" key={`${line.partNumber}-${i}`}>
+                      <span>{line.partNumber} × {line.quantity}</span>
+                      <span>{formatMoney(line.quantity * line.unitPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="thermal-receipt-line">
+                  <span>VAT ({receipt.complianceMode === 'etims_vat' ? '16%' : '0%'})</span>
+                  <span>{formatMoney(receipt.totals.vatAmount)}</span>
+                </div>
+                <div className="thermal-receipt-line">
+                  <strong>Total ({receipt.paymentMethod})</strong>
+                  <strong>{formatMoney(receipt.totals.totalAmount)}</strong>
+                </div>
+                {receipt.changeDue > 0 && (
+                  <div className="thermal-receipt-line">
+                    <span>Cash Change</span>
+                    <span>{formatMoney(receipt.changeDue)}</span>
+                  </div>
+                )}
+                <div className="inline-controls mt-sm no-print">
+                  <button type="button" className="btn-sm" onClick={() => window.print()}>
+                    Print 80mm Receipt
+                  </button>
+                </div>
+                <div className="inline-controls mt-xs no-print">
+                  <input
+                    type="email"
+                    aria-label="Customer email for receipt"
+                    placeholder="Email receipt to rider…"
+                    value={receiptEmail}
+                    onChange={e => setReceiptEmail(e.target.value)}
+                  />
+                  <button type="button" className="btn-sm" onClick={() => void handleEmailReceipt()}>
+                    Email
+                  </button>
+                </div>
+                {receiptEmailStatus && <small className="muted no-print">{receiptEmailStatus}</small>}
               </div>
             )}
           </form>
@@ -451,7 +762,7 @@ export default function Pos() {
           <div className="card-head wrap-head">
             <div>
               <h2>POS Returns &amp; Refund Approval Queue</h2>
-              <p className="muted">Approving a return atomically restores inventory (+return movement) and posts a balanced return reversal journal entry.</p>
+              <p className="muted">Approving a return atomically restores inventory (+return movement) and posts a balanced return reversal journal entry with separation of duties (BR-002).</p>
             </div>
             <span className="status-tag warn">{branchReturns.filter(r => r.status === 'PendingApproval').length} Pending Approval</span>
           </div>
@@ -461,7 +772,7 @@ export default function Pos() {
               <thead>
                 <tr>
                   <th>SKU &amp; Reason</th>
-                  <th>Method</th>
+                  <th>Method &amp; Actors</th>
                   <th className="num">Qty</th>
                   <th className="num">Refund</th>
                   <th>Status</th>
@@ -475,7 +786,12 @@ export default function Pos() {
                       <span className="cell-title mono">{ret.partNumber}</span>
                       <span className="cell-sub">{ret.reason}</span>
                     </td>
-                    <td>{ret.refundMethod}</td>
+                    <td>
+                      <span>{ret.refundMethod}</span>
+                      <span className="cell-sub">
+                        Req: {ret.requestedBy || 'Counter'} {ret.resolvedBy ? `· Auth: ${ret.resolvedBy}` : ''}
+                      </span>
+                    </td>
                     <td className="num">{ret.quantity}</td>
                     <td className="num">{formatMoney(ret.refundAmount)}</td>
                     <td>
