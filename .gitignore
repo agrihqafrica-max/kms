@@ -2,12 +2,14 @@
 .env
 .env.*
 .env*
+.env*.local
 !.env.example
 frontend/.env*
 *.pem
 *.key
 *.p12
 *.pfx
+keys.txt
 
 # --- Python / FastAPI Backend ---
 __pycache__/
@@ -65,4 +67,3 @@ supabase/.branches/
 *.swo
 .DS_Store
 Thumbs.db
-keys.txt
