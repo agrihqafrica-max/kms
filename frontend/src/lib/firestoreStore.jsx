@@ -36,6 +36,7 @@ import {
 } from './accountingEngine.js'
 import {
   buildApiKeyMetadata,
+  buildOpeningBalanceCutoverJournal,
   buildPackBreakMovements,
   buildWorkspaceBackupPayload,
   computeShiftReconciliation,
@@ -43,6 +44,7 @@ import {
   DEFAULT_TENANT_SETTINGS,
   evaluateNotificationDelivery,
   renderNotificationTemplate,
+  simulateBackupRestoreDrill,
   validateReturnActorSeparation,
   verifyWorkspaceBackupPayload,
 } from './platformGovernance.js'
@@ -3136,6 +3138,30 @@ export function WorkspaceProvider({ children }) {
     [addInventoryItem, appendAuditLog],
   )
 
+  const importCustomerRows = useCallback(
+    async validRows => {
+      if (!Array.isArray(validRows) || !validRows.length) return { imported: 0 }
+      for (const row of validRows) {
+        await createCustomerProfile(row)
+      }
+      await appendAuditLog('CUSTOMERS_CSV_IMPORTED', 'CRM', `Imported ${validRows.length} customer profile(s) from CSV`)
+      return { imported: validRows.length }
+    },
+    [createCustomerProfile, appendAuditLog],
+  )
+
+  const importSupplierRows = useCallback(
+    async validRows => {
+      if (!Array.isArray(validRows) || !validRows.length) return { imported: 0 }
+      for (const row of validRows) {
+        await createSupplier(row)
+      }
+      await appendAuditLog('SUPPLIERS_CSV_IMPORTED', 'Procurement', `Imported ${validRows.length} supplier profile(s) from CSV`)
+      return { imported: validRows.length }
+    },
+    [createSupplier, appendAuditLog],
+  )
+
   const returnPurchaseOrderStock = useCallback(
     async ({ poId, itemId, quantity = 1, reason = 'Defective batch returned to supplier' }) => {
       const po = purchaseOrders.find(p => p.id === poId)
@@ -3750,6 +3776,51 @@ export function WorkspaceProvider({ children }) {
 
   const verifyBackupPayload = useCallback(payload => verifyWorkspaceBackupPayload(payload), [])
 
+  const runBackupRestoreDrill = useCallback(
+    (payload = null) => {
+      const targetSnapshot = payload || exportWorkspaceBackup().snapshot
+      const result = simulateBackupRestoreDrill(targetSnapshot)
+      updateTenantSettings({
+        lastBackupDrillAt: result.drilledAt,
+        lastBackupDrillStatus: result.valid ? 'Passed' : 'Failed',
+      })
+      void appendAuditLog(
+        'BACKUP_RESTORE_DRILL',
+        'Platform Governance',
+        `Restore drill ${result.valid ? 'PASSED' : 'FAILED'}: ${result.balancedJournals}/${result.totalJournals} balanced JEs, valuation KES ${result.stockValuationKes}`,
+      )
+      return result
+    },
+    [exportWorkspaceBackup, updateTenantSettings, appendAuditLog],
+  )
+
+  const postOpeningCutoverJournal = useCallback(
+    async ({ openingCashKes = 0, openingInventoryValueKes = 0, openingArKes = 0, openingApKes = 0 }) => {
+      const cutJe = buildOpeningBalanceCutoverJournal({
+        branchId: activeBranchId,
+        openingCashKes,
+        openingInventoryValueKes,
+        openingArKes,
+        openingApKes,
+      })
+      if (!isFirebaseSession) {
+        const local = { id: `je-cut-${Date.now()}`, ownerId: uid, ...cutJe, createdAt: new Date().toISOString() }
+        setJournalEntries(prev => [local, ...prev])
+        await appendAuditLog('OPENING_CUTOVER_POSTED', 'Finance', cutJe.description)
+        return local
+      }
+      try {
+        const ref = doc(collection(db, 'users', uid, 'journalEntries'))
+        await setDoc(ref, { ownerId: uid, ...cutJe, createdAt: serverTimestamp() })
+        await appendAuditLog('OPENING_CUTOVER_POSTED', 'Finance', cutJe.description)
+        return { id: ref.id, ...cutJe }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/journalEntries`)
+      }
+    },
+    [uid, activeBranchId, isFirebaseSession, appendAuditLog],
+  )
+
   const toggleFeatureFlag = useCallback(
     key => {
       setFeatureFlags(prev => {
@@ -3826,6 +3897,8 @@ export function WorkspaceProvider({ children }) {
       setTrainingMode,
       exportWorkspaceBackup,
       verifyBackupPayload,
+      runBackupRestoreDrill,
+      postOpeningCutoverJournal,
       inventory,
       stockMovements,
       purchaseOrders,
@@ -3894,6 +3967,8 @@ export function WorkspaceProvider({ children }) {
       closeDrawerShift,
       breakStockPack,
       importCatalogueRows,
+      importCustomerRows,
+      importSupplierRows,
       returnPurchaseOrderStock,
       subscribeChatThread,
       createChatThread,
@@ -3943,6 +4018,8 @@ export function WorkspaceProvider({ children }) {
       trainingMode,
       exportWorkspaceBackup,
       verifyBackupPayload,
+      runBackupRestoreDrill,
+      postOpeningCutoverJournal,
       inventory,
       stockMovements,
       purchaseOrders,
@@ -4009,6 +4086,8 @@ export function WorkspaceProvider({ children }) {
       closeDrawerShift,
       breakStockPack,
       importCatalogueRows,
+      importCustomerRows,
+      importSupplierRows,
       returnPurchaseOrderStock,
       subscribeChatThread,
       createChatThread,

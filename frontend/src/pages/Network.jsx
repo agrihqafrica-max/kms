@@ -1,25 +1,29 @@
 import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/context.js'
 import { useTenant } from '../tenancy/context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney } from '../lib/format.js'
 import { blindStockProjection, classifyStockVelocity } from '../lib/kmsDomain.js'
-import { ROLE_APPROVAL_LIMITS, evaluateOpsAlertRules } from '../lib/platformGovernance.js'
+import {
+  PLAN_ENTITLEMENTS,
+  ROLE_APPROVAL_LIMITS,
+  evaluateOnboardingChecklist,
+  evaluateOpsAlertRules,
+} from '../lib/platformGovernance.js'
+import { packageEncryptedBackup } from '../lib/offlineVault.js'
 import { buildPlatformHealthReport } from '../lib/reportingEngine.js'
 
-const ONBOARDING_CHECKLIST = [
-  '1. Configure organization settings, KES currency, and receipt prefix (PLT-002)',
-  '2. Register branches, godowns, and storage bin locations (PLT-003 / PLT-004)',
-  '3. Enroll POS counter devices & assign staff RBAC roles (IDN-005 / IDN-007)',
-  '4. Verify opening spare parts catalogue & print shelf barcode labels (CAT-001 / INV-021)',
-  '5. Test offline POS sale queuing, sync conflict check, and EOD drawer reconciliation (POS-010 / FIN-006)',
-]
+const VALID_NETWORK_TABS = ['governance', 'email', 'health', 'marketplace', 'support']
 
 export default function Network() {
   const { session } = useAuth()
   const { data: { context, memberships = [] } } = useTenant()
   const {
     inventory = [],
+    sales = [],
+    drawerShifts = [],
+    locations = [],
     auditLogs = [],
     branches = [],
     addOrUpdateBranch,
@@ -40,6 +44,8 @@ export default function Network() {
     resolveSupportTicket,
     exportWorkspaceBackup,
     verifyBackupPayload,
+    runBackupRestoreDrill,
+    postOpeningCutoverJournal,
     activeBranchId,
     outbox = [],
     outboxConflicts = [],
@@ -53,11 +59,20 @@ export default function Network() {
     appendAuditLog,
   } = useWorkspace()
 
-  const [tab, setTab] = useState('governance')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const tab = VALID_NETWORK_TABS.includes(rawTab) ? rawTab : 'governance'
+  const setTab = nextTab => {
+    setSearchParams(nextTab === 'governance' ? {} : { tab: nextTab }, { replace: true })
+  }
   const [govNotice, setGovNotice] = useState('')
+  const [govError, setGovError] = useState('')
   const [emailStatus, setEmailStatus] = useState({ configured: false, provider: 'none' })
   const [serverMetrics, setServerMetrics] = useState(null)
+  const [integrationRegistry, setIntegrationRegistry] = useState([])
   const [backupCheckResult, setBackupCheckResult] = useState(null)
+  const [restoreDrillResult, setRestoreDrillResult] = useState(null)
+  const [backupPassphrase, setBackupPassphrase] = useState('')
   const [toEmail, setToEmail] = useState(() => session?.user?.email || '')
   const [emailSubject, setEmailSubject] = useState(
     () => `${context.organization_name || 'Kenya Motor'} — Daily Spare Parts & Operations Summary`,
@@ -82,6 +97,12 @@ export default function Network() {
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         if (active && data) setServerMetrics(data)
+      })
+      .catch(() => {})
+    fetch('/api/integrations/registry')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (active && Array.isArray(data?.integrations)) setIntegrationRegistry(data.integrations)
       })
       .catch(() => {})
     return () => {
@@ -130,6 +151,18 @@ export default function Network() {
     etimsInvoices,
     serverMetrics,
   })
+
+  const onboardingStatus = evaluateOnboardingChecklist({
+    tenantSettings,
+    branches,
+    locations,
+    devices,
+    staffMembers,
+    inventory,
+    sales,
+    drawerShifts,
+  })
+  const activePlanTier = PLAN_ENTITLEMENTS[tenantSettings.planTier] || PLAN_ENTITLEMENTS.Growth
 
   function exportForecastCsv() {
     const headers = ['PartNumber,PartName,Branch,StockOnHand,Velocity,Projected30DayDemand,SuggestedReorderQty']
@@ -186,6 +219,7 @@ export default function Network() {
       fiscalYearStart: form.get('fiscalYearStart'),
       operatingHours: form.get('operatingHours'),
       offlineSaleCapKes: Number(form.get('offlineSaleCapKes') || 50000),
+      planTier: form.get('planTier') || 'Growth',
       tenantStatus: form.get('tenantStatus'),
     })
     setGovNotice('Workspace & business settings saved and audited.')
@@ -238,6 +272,7 @@ export default function Network() {
   }
 
   function handleDownloadAndVerifyBackup() {
+    setGovError('')
     const { snapshot, counts } = exportWorkspaceBackup()
     const check = verifyBackupPayload(snapshot)
     setBackupCheckResult({ ...check, counts })
@@ -248,6 +283,58 @@ export default function Network() {
     a.download = `kmsp-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function handleDownloadEncryptedBackup() {
+    setGovError('')
+    if (backupPassphrase.trim().length < 4) {
+      setGovError('Enter a backup passphrase of at least 4 characters to encrypt (.kmsbak).')
+      return
+    }
+    try {
+      const { snapshot } = exportWorkspaceBackup()
+      const envelope = await packageEncryptedBackup(snapshot, backupPassphrase.trim())
+      const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `kmsp-encrypted-backup-${new Date().toISOString().slice(0, 10)}.kmsbak`
+      a.click()
+      URL.revokeObjectURL(url)
+      setGovNotice(`Downloaded AES-256-GCM encrypted backup (SHA-256 ${envelope.sha256.slice(0, 12)}…).`)
+    } catch (err) {
+      setGovError(err?.message || 'Failed to package encrypted backup.')
+    }
+  }
+
+  function handleRunRestoreDrill() {
+    setGovError('')
+    const drill = runBackupRestoreDrill()
+    setRestoreDrillResult(drill)
+    setGovNotice(
+      drill.valid
+        ? `Non-destructive restore drill passed: ${drill.balancedJournals}/${drill.totalJournals} balanced journals, 0 orphan movements.`
+        : `Restore drill completed with ${drill.errors.length} warning(s).`,
+    )
+  }
+
+  async function handlePostOpeningCutover(event) {
+    event.preventDefault()
+    setGovError('')
+    setGovNotice('')
+    const form = new FormData(event.currentTarget)
+    try {
+      const je = await postOpeningCutoverJournal({
+        openingCashKes: form.get('openingCashKes'),
+        openingInventoryValueKes: form.get('openingInventoryValueKes'),
+        openingArKes: form.get('openingArKes'),
+        openingApKes: form.get('openingApKes'),
+      })
+      event.currentTarget.reset()
+      setGovNotice(`Posted balanced opening cutover journal ${je?.entryNumber || ''} (${formatMoney(je?.totalDebit || 0)}).`)
+    } catch (err) {
+      setGovError(err?.message || 'Opening balance cutover failed.')
+    }
   }
 
   async function handleCreateTicket(event) {
@@ -293,6 +380,7 @@ export default function Network() {
           </div>
         </div>
         {govNotice && <p className="notice mt-md" role="status">{govNotice}</p>}
+        {govError && <p className="form-error mt-md" role="alert">{govError}</p>}
       </section>
 
       {tab === 'governance' && (
@@ -330,6 +418,14 @@ export default function Network() {
                   <label>
                     Offline Sale Cap (KES)
                     <input name="offlineSaleCapKes" type="number" min="1000" defaultValue={tenantSettings.offlineSaleCapKes || 50000} />
+                  </label>
+                  <label>
+                    Subscription Plan Tier (PLT-005 / PLT-006)
+                    <select name="planTier" defaultValue={tenantSettings.planTier || 'Growth'}>
+                      <option value="Starter">Starter (1 Branch · 2 Devices)</option>
+                      <option value="Growth">Growth (5 Branches · 12 Devices)</option>
+                      <option value="Enterprise">Enterprise (50 Branches · Unlimited Modules)</option>
+                    </select>
                   </label>
                   <label>
                     Tenant Lifecycle Status (ADM-001)
@@ -578,6 +674,44 @@ export default function Network() {
               </div>
             </section>
           </div>
+
+          <div className="dashboard-grid">
+            <section className="card">
+              <h2>Plan Entitlements &amp; Quota Usage (PLT-005 / PLT-006)</h2>
+              <p className="muted">
+                Active tier: <strong>{activePlanTier.tier}</strong> (Billing provider webhook unprovisioned; workspace quota preview active).
+              </p>
+              <div className="stats-grid mt-md">
+                <div className="stat-card">
+                  <p>Branches Used</p>
+                  <h3>{branches.length} / {activePlanTier.maxBranches}</h3>
+                </div>
+                <div className="stat-card">
+                  <p>Enrolled Devices</p>
+                  <h3>{devices.filter(d => d.status === 'Active').length} / {activePlanTier.maxDevices}</h3>
+                </div>
+              </div>
+              <p className="muted mt-sm">
+                Entitled modules: <span className="mono">{activePlanTier.modules.join(', ')}</span>
+              </p>
+            </section>
+
+            <section className="card">
+              <h2>Opening Balance GL Cutover Importer (PLT-010)</h2>
+              <p className="muted">
+                Post balanced opening Cash, Inventory Asset, AR, and AP balances to Account 3000 Opening Equity during shop onboarding.
+              </p>
+              <form className="auth-form mt-md" onSubmit={e => void handlePostOpeningCutover(e)}>
+                <div className="form-grid">
+                  <label>Opening Cash &amp; Till (KES)<input name="openingCashKes" type="number" min="0" step="0.01" defaultValue="25000" /></label>
+                  <label>Opening Inventory Value (KES)<input name="openingInventoryValueKes" type="number" min="0" step="0.01" defaultValue="150000" /></label>
+                  <label>Opening Accounts Receivable (KES)<input name="openingArKes" type="number" min="0" step="0.01" defaultValue="0" /></label>
+                  <label>Opening Accounts Payable (KES)<input name="openingApKes" type="number" min="0" step="0.01" defaultValue="0" /></label>
+                </div>
+                <button className="primary" type="submit">Post Balanced Cutover Journal</button>
+              </form>
+            </section>
+          </div>
         </div>
       )}
 
@@ -726,11 +860,30 @@ export default function Network() {
             </section>
 
             <section className="card">
-              <h2>Workspace Backup Export &amp; Ledger Integrity Check (PLT-014)</h2>
-              <p className="muted">Export complete workspace snapshot JSON and verify double-entry journal balance across every archived entry.</p>
+              <h2>Workspace Backup Export &amp; Restore Drill (PLT-014)</h2>
+              <p className="muted">
+                Export plaintext JSON or AES-256-GCM encrypted `.kmsbak` snapshots and run non-destructive ledger + SKU integrity drills.
+              </p>
+              <div className="form-grid mt-sm">
+                <label>
+                  Encryption Passphrase (for .kmsbak)
+                  <input
+                    type="password"
+                    value={backupPassphrase}
+                    onChange={e => setBackupPassphrase(e.target.value)}
+                    placeholder="Min 4 chars for AES-256-GCM"
+                  />
+                </label>
+              </div>
               <div className="inline-controls mt-md">
                 <button type="button" className="primary" onClick={handleDownloadAndVerifyBackup}>
-                  Export &amp; Verify Backup Snapshot
+                  Export &amp; Verify JSON
+                </button>
+                <button type="button" onClick={() => void handleDownloadEncryptedBackup()}>
+                  Export Encrypted (.kmsbak)
+                </button>
+                <button type="button" onClick={handleRunRestoreDrill}>
+                  Run Non-Destructive Restore Drill
                 </button>
               </div>
               {backupCheckResult && (
@@ -742,8 +895,58 @@ export default function Network() {
                   </p>
                 </div>
               )}
+              {restoreDrillResult && (
+                <div className="sub-card mt-sm">
+                  <strong>{restoreDrillResult.valid ? 'Restore Drill PASSED' : 'Restore Drill Flagged Warnings'}</strong>
+                  <p className="muted">
+                    Balanced Journals: {restoreDrillResult.balancedJournals}/{restoreDrillResult.totalJournals} ·
+                    Orphan Movements: {restoreDrillResult.orphanMovementCount} · Valuation:{' '}
+                    {formatMoney(restoreDrillResult.stockValuationKes)}
+                  </p>
+                </div>
+              )}
             </section>
           </div>
+
+          <section className="card">
+            <div className="card-head wrap-head">
+              <div>
+                <h2>Server Integration Registry (INT-001)</h2>
+                <p className="muted">Live readiness inspection across AI, email, WhatsApp, SMS, storage buckets, and Postgres endpoints.</p>
+              </div>
+              <span className="status-tag muted">
+                {integrationRegistry.filter(i => i.configured).length}/{integrationRegistry.length || 7} Configured
+              </span>
+            </div>
+            <div className="saas-table-wrap mt-sm">
+              <table className="saas-table">
+                <thead>
+                  <tr>
+                    <th>Integration</th>
+                    <th>Category</th>
+                    <th>Endpoint / Target</th>
+                    <th>Required Env Secrets</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {integrationRegistry.map(item => (
+                    <tr key={item.id}>
+                      <td className="cell-title">{item.name}</td>
+                      <td>{item.category}</td>
+                      <td className="mono">{item.endpoint}</td>
+                      <td className="mono">{(item.requiredSecrets || []).join(', ')}</td>
+                      <td>
+                        <span className={item.configured ? 'status-tag ok' : 'status-tag warn'}>
+                          {item.configured ? 'Configured' : 'Secrets Missing'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <section className="card">
             <h2>Immutable Security &amp; Operations Audit Trail</h2>
@@ -831,10 +1034,22 @@ export default function Network() {
                 </button>
               </div>
 
-              <h3 className="section-subheading">Interactive Branch Onboarding Checklist</h3>
+              <div className="card-head wrap-head mt-md">
+                <h3 className="section-subheading">Live Branch Onboarding Checklist</h3>
+                <span className={onboardingStatus.readinessPct === 100 ? 'status-tag ok' : 'status-tag warn'}>
+                  {onboardingStatus.completedCount}/{onboardingStatus.totalCount} Ready ({onboardingStatus.readinessPct}%)
+                </span>
+              </div>
               <ul className="draft-list mt-sm">
-                {ONBOARDING_CHECKLIST.map(step => (
-                  <li key={step}><span>{step}</span></li>
+                {onboardingStatus.steps.map(step => (
+                  <li key={step.id}>
+                    <span>{step.label}</span>
+                    {step.completed ? (
+                      <span className="status-tag ok">Done</span>
+                    ) : (
+                      <Link className="status-tag warn" to={step.route}>Complete Step →</Link>
+                    )}
+                  </li>
                 ))}
               </ul>
             </section>

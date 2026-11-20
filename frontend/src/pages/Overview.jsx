@@ -3,17 +3,8 @@ import { useTenant } from '../tenancy/context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney, nairobiDay } from '../lib/format.js'
 import { classifyStockVelocity } from '../lib/kmsDomain.js'
+import { buildWeeklySalesTrend } from '../lib/reportingEngine.js'
 import { t } from '../i18n/index.js'
-
-const WEEKLY_BARS = [
-  { day: 'Mon', pct: 46 },
-  { day: 'Tue', pct: 62 },
-  { day: 'Wed', pct: 58 },
-  { day: 'Thu', pct: 74 },
-  { day: 'Fri', pct: 92 },
-  { day: 'Sat', pct: 86 },
-  { day: 'Sun', pct: 39 },
-]
 
 export default function Overview() {
   const { data: { context, memberships = [] } } = useTenant()
@@ -53,6 +44,7 @@ export default function Overview() {
 
   const pendingPOs = purchaseOrders.filter(po => po.status === 'Pending').length
   const activeTransfers = transfers.filter(tr => tr.status !== 'Received' && tr.status !== 'Rejected').length
+  const weeklyTrend = buildWeeklySalesTrend(sales, targetBranchId)
 
   return (
     <>
@@ -106,23 +98,32 @@ export default function Overview() {
 
       <div className="dashboard-grid">
         <section className="card chart-card">
-          <div className="card-head">
+          <div className="card-head wrap-head">
             <div>
-              <p className="eyebrow">Operations Pulse</p>
-              <h2>Weekly Sales &amp; Fulfilment Activity</h2>
+              <p className="eyebrow">Operations Pulse (7-Day EAT)</p>
+              <h2>Daily Branch Revenue Trend</h2>
             </div>
             <span className="status-tag ok">{pendingPOs} Pending PO · {activeTransfers} Active Dispatch</span>
           </div>
-          <div className="chart" aria-label="Weekly revenue activity">
+          <div className="chart" aria-label="7-day Nairobi revenue activity">
             <div className="bars">
-              {WEEKLY_BARS.map(bar => (
-                <div className="bar-wrap" key={bar.day}>
-                  <span style={{ height: `${bar.pct}%` }} />
-                  <small>{bar.day}</small>
+              {weeklyTrend.buckets.map(bar => (
+                <div
+                  className="bar-wrap"
+                  key={bar.dayKey}
+                  title={`${bar.dayKey}: ${formatMoney(bar.totalSales)} (${bar.orderCount} sale(s))`}
+                >
+                  <span style={{ height: `${bar.heightPct}%` }} />
+                  <small>{bar.dayLabel}</small>
                 </div>
               ))}
             </div>
           </div>
+          <p className="muted mt-xs">
+            {weeklyTrend.hasSalesData
+              ? `Peak day: ${formatMoney(weeklyTrend.maxSales)} · Hover any day bar for Nairobi EAT daily total.`
+              : 'No completed sales recorded on this branch in the past 7 Nairobi EAT days yet.'}
+          </p>
         </section>
 
         <section className="card radar-card">

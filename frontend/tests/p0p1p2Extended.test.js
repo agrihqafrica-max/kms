@@ -15,11 +15,16 @@ import {
   buildApiKeyMetadata,
   buildWorkspaceBackupPayload,
   verifyWorkspaceBackupPayload,
+  evaluateOnboardingChecklist,
+  buildOpeningBalanceCutoverJournal,
+  generateEscPosReceipt,
+  generateZplBarcodeLabel,
 } from '../src/lib/platformGovernance.js'
 import {
   buildDailyBusinessSummary,
   buildSalesReport,
   buildStockReport,
+  buildWeeklySalesTrend,
 } from '../src/lib/reportingEngine.js'
 
 test('classifyAbcInventory classifies SKUs into Pareto A/B/C tiers using sales movement and stock value', () => {
@@ -201,4 +206,85 @@ test('reportingEngine supports Nairobi EAT date range filters, payment method fi
   })
   assert.equal(stock[0].abcTier, 'A')
   assert.equal(stock[0].soldUnits, 4)
+})
+
+test('evaluateOnboardingChecklist computes branch readiness dynamically from real workspace state', () => {
+  const partial = evaluateOnboardingChecklist({
+    tenantSettings: DEFAULT_TENANT_SETTINGS,
+    branches: [{ id: 'branch-cbd', name: 'CBD' }],
+    locations: [],
+    devices: [{ id: 'd1', status: 'Revoked' }],
+    staffMembers: [],
+    inventory: [{ id: 's1' }],
+    sales: [],
+    drawerShifts: [],
+  })
+  assert.equal(partial.totalCount, 5)
+  assert.equal(partial.completedCount, 2)
+  assert.equal(partial.readinessPct, 40)
+
+  const ready = evaluateOnboardingChecklist({
+    tenantSettings: DEFAULT_TENANT_SETTINGS,
+    branches: [{ id: 'branch-cbd', name: 'CBD' }],
+    locations: [{ id: 'loc-1', code: 'A1' }],
+    devices: [{ id: 'd1', status: 'Active' }],
+    staffMembers: [{ id: 'st-1', status: 'Active' }],
+    inventory: [{ id: 's1' }],
+    sales: [{ id: 'sale-1' }],
+    drawerShifts: [],
+  })
+  assert.equal(ready.completedCount, 5)
+  assert.equal(ready.readinessPct, 100)
+})
+
+test('buildWeeklySalesTrend buckets sales by Nairobi EAT date and branch and flags empty 7-day windows', () => {
+  const ref = new Date('2026-11-19T12:00:00+03:00')
+  const emptyTrend = buildWeeklySalesTrend([], 'branch-cbd', ref)
+  assert.equal(emptyTrend.buckets.length, 7)
+  assert.equal(emptyTrend.hasSalesData, false)
+  assert.equal(emptyTrend.maxSales, 0)
+
+  const trend = buildWeeklySalesTrend(
+    [
+      { branchId: 'branch-cbd', totalAmount: 3000, createdAt: '2026-11-19T10:00:00+03:00' },
+      { branchId: 'branch-cbd', totalAmount: 1500, createdAt: '2026-11-19T15:30:00+03:00' },
+      { branchId: 'branch-cbd', totalAmount: 2000, createdAt: '2026-11-17T09:00:00+03:00' },
+      { branchId: 'branch-ind', totalAmount: 9999, createdAt: '2026-11-19T11:00:00+03:00' },
+    ],
+    'branch-cbd',
+    ref,
+  )
+  assert.equal(trend.hasSalesData, true)
+  assert.equal(trend.maxSales, 4500)
+  const todayBucket = trend.buckets.find(b => b.dayKey === '2026-11-19')
+  assert.equal(todayBucket.totalSales, 4500)
+  assert.equal(todayBucket.orderCount, 2)
+  assert.equal(todayBucket.heightPct, 100)
+  const nov17Bucket = trend.buckets.find(b => b.dayKey === '2026-11-17')
+  assert.equal(nov17Bucket.totalSales, 2000)
+})
+
+test('cutover journal balances assets/AP against 3000 Opening Balance Equity and thermal formatters emit valid ESC/POS and ZPL', () => {
+  const je = buildOpeningBalanceCutoverJournal({
+    branchId: 'branch-cbd',
+    openingCashKes: 20000,
+    openingInventoryValueKes: 80000,
+    openingArKes: 15000,
+    openingApKes: 25000,
+  })
+  assert.equal(je.totalDebit, 115000)
+  assert.equal(je.totalCredit, 115000)
+
+  const esc = generateEscPosReceipt({
+    id: 'RCPT-1',
+    paymentMethod: 'cash',
+    items: [{ partNumber: 'BJ-CSK-150', quantity: 2, unitPrice: 2200 }],
+    totals: { vatAmount: 0, totalAmount: 4400 },
+  })
+  assert.match(esc, /BJ-CSK-150 x2/)
+  assert.match(esc, /TOTAL \(cash\): KES 4,400/)
+
+  const zpl = generateZplBarcodeLabel({ partNumber: 'BJ-CSK-150', partName: 'Boxer Chain Kit', barcode: '6164001', retailPrice: 2200 })
+  assert.match(zpl, /^\^XA[\s\S]*\^XZ$/)
+  assert.match(zpl, /\^FD6164001\^FS/)
 })

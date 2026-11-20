@@ -38,6 +38,7 @@ export function validateBalancedJournal({ lines, entryType, description }) {
     'count_variance',
     'manual_reversal',
     'purchase_return',
+    'opening_cutover',
   ]
   if (!allowed.includes(entryType)) {
     throw new Error(`Unsupported journal entryType: ${entryType}`)

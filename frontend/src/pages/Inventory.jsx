@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTenant } from '../tenancy/context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney } from '../lib/format.js'
@@ -14,7 +15,19 @@ import {
   evaluateSupplierScore,
   scoreAndRankRfqs,
 } from '../lib/kmsDomain.js'
-import { parseCatalogueCsvAndDetectDuplicates } from '../lib/platformGovernance.js'
+import {
+  generateZplBarcodeLabel,
+  parseCatalogueCsvAndDetectDuplicates,
+  parseSupplierCsvImport,
+} from '../lib/platformGovernance.js'
+import {
+  compressImageFile,
+  listMediaAttachments,
+  removeLocalMediaAttachment,
+  saveLocalMediaAttachment,
+} from '../lib/mediaVault.js'
+
+const VALID_INVENTORY_TABS = ['catalogue', 'locations', 'reorder', 'procurement', 'counts', 'fitment']
 
 const QUALITY_LABELS = {
   OEM: 'OEM',
@@ -84,11 +97,17 @@ export default function Inventory() {
     createBranchTransfer,
     breakStockPack,
     importCatalogueRows,
+    importSupplierRows,
     returnPurchaseOrderStock,
     appendAuditLog,
   } = useWorkspace()
 
-  const [tab, setTab] = useState('catalogue')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const tab = VALID_INVENTORY_TABS.includes(rawTab) ? rawTab : 'catalogue'
+  const setTab = nextTab => {
+    setSearchParams(nextTab === 'catalogue' ? {} : { tab: nextTab }, { replace: true })
+  }
   const [search, setSearch] = useState('')
   const [velocityFilter, setVelocityFilter] = useState('all')
   const [abcFilter, setAbcFilter] = useState('all')
@@ -96,6 +115,14 @@ export default function Inventory() {
   const [rfqAwardQty, setRfqAwardQty] = useState(15)
   const [showAddSku, setShowAddSku] = useState(false)
   const [showImportCsv, setShowImportCsv] = useState(false)
+  const [showMediaVault, setShowMediaVault] = useState(false)
+  const [mediaFiles, setMediaFiles] = useState(() => listMediaAttachments('catalogue'))
+  const [mediaPartNumber, setMediaPartNumber] = useState('')
+  const [showSupplierCsv, setShowSupplierCsv] = useState(false)
+  const [supplierCsvText, setSupplierCsvText] = useState(
+    'supplierName,category,area,leadTimeDays,paymentTerms\nMombasa Boda Importers Ltd,Engine & Drivetrain,Mombasa Road,3,Net 14',
+  )
+  const [supplierCsvReport, setSupplierCsvReport] = useState(null)
   const [csvText, setCsvText] = useState(
     'partNumber,partName,category,brand,barcode,unitCost,retailPrice,stockQuantity,reorderLevel,compatibleModels\nTVS-LED-01,TVS HLX LED Headlamp Unit,Electrical,TVS Genuine,6164008812345,950,1650,12,4,TVS HLX 125/150\nBJ-CSK-150,Duplicate Check Sample,Drivetrain,Bajaj,,1450,2200,5,3,Boxer BM150',
   )
@@ -366,6 +393,69 @@ export default function Inventory() {
     }
   }
 
+  function downloadZplLabels() {
+    if (!branchItems.length) return
+    const zpl = branchItems.map(item => generateZplBarcodeLabel(item)).join('\n\n')
+    const blob = new Blob([zpl], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `kenyamoto-labels-${activeBranchId}.zpl`
+    a.click()
+    URL.revokeObjectURL(url)
+    setNotice(`Generated Zebra ZPL thermal labels for ${branchItems.length} SKU(s).`)
+  }
+
+  async function handleCatalogMediaChange(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setBusy(true)
+    setError('')
+    try {
+      const compressed = await compressImageFile(file)
+      const record = {
+        ...compressed,
+        partNumber: mediaPartNumber || branchRawItems[0]?.partNumber || 'GENERAL',
+      }
+      saveLocalMediaAttachment('catalogue', record)
+      setMediaFiles(listMediaAttachments('catalogue'))
+      setNotice(`Saved compressed local asset "${record.fileName}" (${record.partNumber}) to browser media vault.`)
+      event.target.value = ''
+    } catch (err) {
+      setError(err?.message || 'Failed to process SKU photo/document.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function handleRemoveCatalogMedia(mediaId) {
+    removeLocalMediaAttachment('catalogue', mediaId)
+    setMediaFiles(listMediaAttachments('catalogue'))
+    setNotice('Removed attachment from local media vault.')
+  }
+
+  function handleValidateSupplierCsv() {
+    setError('')
+    const report = parseSupplierCsvImport(supplierCsvText, suppliers)
+    setSupplierCsvReport(report)
+  }
+
+  async function handleCommitSupplierCsv() {
+    if (!supplierCsvReport?.validRows?.length) return
+    setBusy(true)
+    setError('')
+    try {
+      const res = await importSupplierRows(supplierCsvReport.validRows)
+      setNotice(`Imported ${res.imported} verified supplier(s); skipped ${supplierCsvReport.duplicates.length} duplicate(s).`)
+      setSupplierCsvReport(null)
+      setShowSupplierCsv(false)
+    } catch (err) {
+      setError(err?.message || 'Supplier CSV import failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handlePackBreak(row) {
     setBusy(true)
     setError('')
@@ -612,6 +702,9 @@ export default function Inventory() {
               <button type="button" onClick={() => setShowBarcodeSheet(v => !v)}>
                 {showBarcodeSheet ? 'Hide Barcode Labels' : 'Print Barcode Labels'}
               </button>
+              <button type="button" onClick={() => setShowMediaVault(v => !v)}>
+                {showMediaVault ? 'Close Media Vault' : `SKU Photos (${mediaFiles.length})`}
+              </button>
               <button type="button" onClick={() => setShowImportCsv(v => !v)}>
                 {showImportCsv ? 'Close CSV Import' : 'Import CSV'}
               </button>
@@ -621,13 +714,66 @@ export default function Inventory() {
             </div>
           </div>
 
+          {showMediaVault && (
+            <div className="sub-card mb-md no-print">
+              <div className="card-head wrap-head">
+                <div>
+                  <strong>SKU Photos &amp; Spec Sheet Local Vault (CAT-007 / CAT-008)</strong>
+                  <p className="muted">
+                    Images are compressed in-browser with SHA-256 digests and cached locally while cloud object storage buckets remain unprovisioned.
+                  </p>
+                </div>
+                <span className="status-tag warn">Local Vault Only (Cloud Bucket Pending)</span>
+              </div>
+              <div className="form-grid mt-sm">
+                <label>
+                  Tag Part Number / SKU
+                  <select value={mediaPartNumber} onChange={e => setMediaPartNumber(e.target.value)}>
+                    <option value="">General Branch Asset</option>
+                    {branchRawItems.map(sku => (
+                      <option key={sku.id} value={sku.partNumber}>
+                        {sku.partNumber} — {sku.partName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Capture or Upload Image / PDF Spec
+                  <input type="file" accept="image/*,.pdf" onChange={e => void handleCatalogMediaChange(e)} disabled={busy} />
+                </label>
+              </div>
+              {mediaFiles.length > 0 && (
+                <div className="po-list mt-sm">
+                  {mediaFiles.map(m => (
+                    <div className="sub-card" key={m.mediaId}>
+                      <div className="card-head wrap-head">
+                        <div>
+                          <strong>{m.partNumber || 'GENERAL'} · {m.fileName}</strong>
+                          <p className="muted mono">{m.mimeType} · {Math.round((m.sizeBytes || 0) / 1024)} KB · SHA {String(m.sha256 || '').slice(0, 12)}…</p>
+                        </div>
+                        <button type="button" className="btn-sm" onClick={() => handleRemoveCatalogMedia(m.mediaId)}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {showBarcodeSheet && (
             <div className="sub-card mb-md">
               <div className="card-head wrap-head no-print">
                 <strong>Printable Shelf &amp; Packet Barcode Sheet (INV-021)</strong>
-                <button type="button" className="primary btn-sm" onClick={() => window.print()}>
-                  Print Labels
-                </button>
+                <div className="inline-controls">
+                  <button type="button" className="btn-sm" onClick={downloadZplLabels} disabled={!branchItems.length}>
+                    Download ZPL (Thermal)
+                  </button>
+                  <button type="button" className="primary btn-sm" onClick={() => window.print()}>
+                    Print Labels
+                  </button>
+                </div>
               </div>
               <div className="barcode-sheet">
                 {branchItems.map(item => (
@@ -1396,8 +1542,35 @@ export default function Inventory() {
                 <h2>Supplier Registry &amp; Reliability Scorecard</h2>
                 <p className="muted">Track lead times, payment terms, fill rates, and defect ratios across wholesalers.</p>
               </div>
-              <span className="status-tag ok">{suppliers.length} Active Suppliers</span>
+              <div className="inline-controls">
+                <button type="button" className="btn-sm" onClick={() => setShowSupplierCsv(v => !v)}>
+                  {showSupplierCsv ? 'Close Supplier CSV' : 'Bulk Import Suppliers'}
+                </button>
+                <span className="status-tag ok">{suppliers.length} Active Suppliers</span>
+              </div>
             </div>
+
+            {showSupplierCsv && (
+              <div className="sub-card mb-md">
+                <strong>Bulk Supplier CSV Import (PLT-010)</strong>
+                <p className="muted">Columns: supplierName,category,area,leadTimeDays,paymentTerms</p>
+                <textarea rows={3} value={supplierCsvText} onChange={e => setSupplierCsvText(e.target.value)} />
+                <div className="inline-controls mt-sm">
+                  <button type="button" onClick={handleValidateSupplierCsv}>Validate Supplier CSV</button>
+                  {supplierCsvReport?.validRows?.length > 0 && (
+                    <button type="button" className="primary" disabled={busy} onClick={() => void handleCommitSupplierCsv()}>
+                      Import {supplierCsvReport.validRows.length} Supplier(s)
+                    </button>
+                  )}
+                </div>
+                {supplierCsvReport && (
+                  <p className="muted mt-xs">
+                    Valid: <strong>{supplierCsvReport.validRows.length}</strong> · Duplicates skipped:{' '}
+                    <strong>{supplierCsvReport.duplicates.length}</strong> · Errors: <strong>{supplierCsvReport.errors.length}</strong>
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="saas-table-wrap">
               <table className="saas-table">

@@ -204,3 +204,44 @@ export function exportReportToCsv(columns = [], rows = []) {
   const dataLines = rows.map(row => row.map(csvCell).join(','))
   return [headerLine, ...dataLines].join('\n')
 }
+
+export function buildWeeklySalesTrend(sales = [], branchId = null, referenceDate = new Date()) {
+  const fmtDayKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const fmtWeekday = new Intl.DateTimeFormat('en-KE', {
+    timeZone: 'Africa/Nairobi',
+    weekday: 'short',
+  })
+
+  const buckets = []
+  const bucketMap = new Map()
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const dt = new Date(referenceDate.getTime() - offset * 86400000)
+    const dayKey = fmtDayKey.format(dt)
+    const dayLabel = fmtWeekday.format(dt)
+    const entry = { dayKey, dayLabel, totalSales: 0, orderCount: 0, heightPct: 6 }
+    buckets.push(entry)
+    bucketMap.set(dayKey, entry)
+  }
+
+  for (const s of Array.isArray(sales) ? sales : []) {
+    if (branchId && s?.branchId && s.branchId !== branchId) continue
+    const ts = rowTimestampMs(s)
+    const key = ts !== null ? fmtDayKey.format(new Date(ts)) : buckets[buckets.length - 1].dayKey
+    const bucket = bucketMap.get(key)
+    if (bucket) {
+      bucket.totalSales = round2(bucket.totalSales + Number(s.totalAmount || 0))
+      bucket.orderCount += 1
+    }
+  }
+
+  const maxSales = buckets.reduce((max, b) => Math.max(max, b.totalSales), 0)
+  for (const b of buckets) {
+    b.heightPct = maxSales > 0 && b.totalSales > 0 ? Math.max(12, Math.round((b.totalSales / maxSales) * 100)) : 6
+  }
+  return { buckets, maxSales, hasSalesData: maxSales > 0 }
+}

@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTenant } from '../tenancy/context.js'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney } from '../lib/format.js'
 import { addCartItem, setCartQuantity, removeCartItem } from './PosCart.js'
 import { computePosSaleTotals, validateSplitPayments } from '../lib/kmsDomain.js'
-import { computeShiftReconciliation, evaluateDiscountApproval } from '../lib/platformGovernance.js'
+import {
+  computeShiftReconciliation,
+  evaluateDiscountApproval,
+  generateEscPosReceipt,
+  parseCustomerCsvImport,
+} from '../lib/platformGovernance.js'
 import { t } from '../i18n/index.js'
+
+const VALID_POS_TABS = ['register', 'returns', 'shifts', 'customers']
 
 export default function Pos() {
   const { data: { context } } = useTenant()
@@ -32,13 +40,23 @@ export default function Pos() {
     openDrawerShift,
     closeDrawerShift,
     createCustomerProfile,
+    importCustomerRows,
     updateCustomerConsent,
     sendWorkspaceNotification,
     requestApproval,
     resolveApprovalRequest,
   } = useWorkspace()
 
-  const [tab, setTab] = useState('register')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const tab = VALID_POS_TABS.includes(rawTab) ? rawTab : 'register'
+  const setTab = nextTab => {
+    setSearchParams(nextTab === 'register' ? {} : { tab: nextTab }, { replace: true })
+  }
+  const [customerCsvText, setCustomerCsvText] = useState(
+    'fullName,phone,bikeModel,consentWhatsApp,consentSms,consentMarketing\nPeter Mwangi,+254712345678,Bajaj Boxer BM150,true,true,false',
+  )
+  const [customerCsvReport, setCustomerCsvReport] = useState(null)
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [cart, setCart] = useState([])
@@ -737,6 +755,22 @@ export default function Pos() {
                   <button type="button" className="btn-sm" onClick={() => window.print()}>
                     Print 80mm Receipt
                   </button>
+                  <button
+                    type="button"
+                    className="btn-sm"
+                    onClick={() => {
+                      const raw = generateEscPosReceipt(receipt, context.organization_name || 'Kenya Motorcycle Spare Parts General')
+                      const blob = new Blob([raw], { type: 'text/plain;charset=utf-8' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `${receipt.prefix}-${receipt.id}-escpos.txt`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    }}
+                  >
+                    Download ESC/POS
+                  </button>
                 </div>
                 <div className="inline-controls mt-xs no-print">
                   <input
@@ -991,6 +1025,45 @@ export default function Pos() {
             </div>
             <button className="primary" type="submit" disabled={busy}>Save Customer Profile</button>
           </form>
+
+          <div className="inventory-form">
+            <h3>Bulk Customer CSV Import (PLT-010)</h3>
+            <p className="muted">Columns: fullName,phone,bikeModel,consentWhatsApp,consentSms,consentMarketing</p>
+            <textarea rows={3} value={customerCsvText} onChange={e => setCustomerCsvText(e.target.value)} />
+            <div className="inline-controls">
+              <button
+                type="button"
+                onClick={() => setCustomerCsvReport(parseCustomerCsvImport(customerCsvText, customers))}
+              >
+                Validate Customer CSV
+              </button>
+              {customerCsvReport?.validRows?.length > 0 && (
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true)
+                    try {
+                      const res = await importCustomerRows(customerCsvReport.validRows)
+                      setCustomerCsvReport(null)
+                      setNotice(`Imported ${res.imported} customer profile(s).`)
+                    } finally {
+                      setBusy(false)
+                    }
+                  }}
+                >
+                  Import {customerCsvReport.validRows.length} Customer(s)
+                </button>
+              )}
+            </div>
+            {customerCsvReport && (
+              <small className="muted">
+                Valid: <strong>{customerCsvReport.validRows.length}</strong> · Duplicates skipped:{' '}
+                <strong>{customerCsvReport.duplicates.length}</strong> · Errors: <strong>{customerCsvReport.errors.length}</strong>
+              </small>
+            )}
+          </div>
         </section>
       )}
     </div>

@@ -611,7 +611,7 @@ export function buildOpeningBalanceCutoverJournal({
   if (inv > 0) lines.push({ account: '1200 Inventory Asset', debit: inv, credit: 0 })
   if (ar > 0) lines.push({ account: '1100 Accounts Receivable', debit: ar, credit: 0 })
   if (ap > 0) lines.push({ account: '2010 Accounts Payable', debit: 0, credit: ap })
-  if (equityBalance >= 0 && equityBalance > 0) {
+  if (equityBalance > 0) {
     lines.push({ account: '3000 Opening Balance Equity', debit: 0, credit: equityBalance })
   } else if (equityBalance < 0) {
     lines.push({ account: '3000 Opening Balance Equity', debit: Math.abs(equityBalance), credit: 0 })
@@ -632,6 +632,7 @@ export function buildOpeningBalanceCutoverJournal({
     totalCredit,
     description: `Legacy ERP opening cutover (Cash KES ${cash}, Inv KES ${inv}, AR KES ${ar}, AP KES ${ap})`,
     linesJson: JSON.stringify(lines),
+    status: 'Posted',
   }
 }
 
@@ -675,5 +676,55 @@ export function generateZplBarcodeLabel(item = {}) {
     `^BCN,80,Y,N,N^FD${code}^FS`,
     '^XZ',
   ].join('\n')
+}
+
+export function evaluateOnboardingChecklist({
+  tenantSettings = {},
+  branches = [],
+  locations = [],
+  devices = [],
+  staffMembers = [],
+  inventory = [],
+  sales = [],
+  drawerShifts = [],
+} = {}) {
+  const activeDevices = (devices || []).filter(d => d.status === 'Active')
+  const activeStaff = (staffMembers || []).filter(s => s.status === 'Active')
+  const steps = [
+    {
+      id: 'plt-002',
+      label: 'Configure organization profile, KES currency & receipt prefix (PLT-002)',
+      completed: Boolean(tenantSettings?.businessName && tenantSettings?.receiptPrefix && tenantSettings?.currency),
+      route: '/app/network',
+    },
+    {
+      id: 'plt-003-004',
+      label: 'Register branch locations & physical storage bin codes (PLT-003 / PLT-004)',
+      completed: (branches || []).length > 0 && (locations || []).length > 0,
+      route: '/app/inventory?tab=locations',
+    },
+    {
+      id: 'idn-005-007',
+      label: 'Enroll active POS counter terminal & staff RBAC roles (IDN-005 / IDN-007)',
+      completed: activeDevices.length > 0 && activeStaff.length > 0,
+      route: '/app/network',
+    },
+    {
+      id: 'cat-001',
+      label: 'Load spare parts catalogue & print shelf barcode labels (CAT-001 / INV-021)',
+      completed: (inventory || []).length > 0,
+      route: '/app/inventory',
+    },
+    {
+      id: 'pos-010-fin-006',
+      label: 'Verify counter POS sale or cash drawer shift reconciliation (POS-010 / FIN-006)',
+      completed: (sales || []).length > 0 || (drawerShifts || []).length > 0,
+      route: '/app/pos',
+    },
+  ]
+  const completedCount = steps.filter(s => s.completed).length
+  const totalCount = steps.length
+  const readinessPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+  return { steps, completedCount, totalCount, readinessPct }
 }
 

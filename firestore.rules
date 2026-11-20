@@ -320,7 +320,7 @@ service cloud.firestore {
         && data.ownerId is string && data.ownerId == userId
         && data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128
         && data.entryNumber is string && data.entryNumber.size() >= 1 && data.entryNumber.size() <= 80
-        && data.entryType in ['sale', 'expense', 'return_reversal', 'grn_receipt', 'count_variance', 'manual_reversal', 'purchase_return']
+        && data.entryType in ['sale', 'expense', 'return_reversal', 'grn_receipt', 'count_variance', 'manual_reversal', 'purchase_return', 'opening_cutover']
         && (!('sourceId' in data) || (data.sourceId is string && data.sourceId.size() <= 128))
         && data.description is string && data.description.size() >= 1 && data.description.size() <= 400
         && data.debitAccount is string && data.debitAccount.size() >= 1 && data.debitAccount.size() <= 80

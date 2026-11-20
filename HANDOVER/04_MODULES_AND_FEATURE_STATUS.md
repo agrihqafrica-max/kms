@@ -115,4 +115,30 @@ Status: **146 P0/P1/P2 functions mapped (103 Complete, 43 Blocked); 133 P3–P8 
   - Kiswahili native review remains **Blocked** under `D-027` (`UX-012`).
   - External SMTP/Resend live secrets (`TC-44`), WhatsApp Cloud API, SMS gateway, cloud storage buckets (0 provisioned), hardware barcode/thermal printers, and hosted CI/staging remain **Blocked**.
 
+---
+
+## Full 279-Function Code Audit, Navigation & Utility Wiring Reconciliation (2026-11-19 Continuation)
+
+Status: **279 functions mapped across Phases P0–P8 (103 Complete, 41 Partial, 35 Blocked, 100 Deferred)** in `docs/traceability/function-traceability.md`.
+
+### Verified Implementation Remediations
+- **Grouped Sidebar Navigation, SVG Icons & URL `?tab=` Deep Linking (`Shell.jsx`, `App.css`, `en.js`, `sw.js`)**:
+  - Expanded desktop sidebar into **4 operational groups (`navGroupOps`, `navGroupSupply`, `navGroupFinance`, `navGroupAdmin`) with 18 deep links** synchronized to `?tab=` search params across `Pos`, `Inventory`, `Finance`, and `Network`.
+  - Added inline 16×16 stroke SVG `NavIcon` components (`aria-hidden="true"`) on both desktop sidebar links and `.mobile-nav` bottom links.
+  - Preserved strict Cashier Finance RBAC gating (`requiresFinanceRole: true` keeps `/app/finance` nav links hidden from `cashier`).
+- **Remediated Orphaned Utilities & Static Placeholders**:
+  - `ADM-004` (`Complete`): Replaced static `ONBOARDING_CHECKLIST` in `Network.jsx` with dynamic `evaluateOnboardingChecklist(...)` readiness scoring and deep-links to `?tab=`.
+  - `RPT-002` (`Complete`): Replaced hardcoded `WEEKLY_BARS` in `Overview.jsx` with real 7-day `Africa/Nairobi` EAT sales bucketing via `buildWeeklySalesTrend` (`reportingEngine.js`).
+  - `PLT-010` (`Partial`): Wired `parseCustomerCsvImport` (`Pos.jsx`), `parseSupplierCsvImport` (`Inventory.jsx`), and Opening Balance GL Cutover Importer (`Network.jsx` -> `postOpeningCutoverJournal`, validated via `accountingEngine.js` & `firestore.rules` `'opening_cutover'` entryType). Postgres live migration rehearsal remains blocked (`D-032`).
+  - `PLT-014` (`Partial`): Wired `runBackupRestoreDrill` (non-destructive dry-run) and WebCrypto AES-256-GCM `.kmsbak` export (`packageEncryptedBackup`) in `Network.jsx -> health`. Automated server `pg_dump` schedule & KMS key-wrapping remain pending.
+  - `INT-001` (`Partial`): Wired live `GET /api/integrations/registry` endpoint in `server.js` and Server Integration Registry table in `Network.jsx -> health`.
+  - `POS-007` (`Partial`) & `INV-021` (`Partial`): Wired binary ESC/POS `.bin` receipt download (`generateEscPosReceipt` in `Pos.jsx`) and thermal ZPL `.zpl` label download (`generateZplBarcodeLabel` in `Inventory.jsx`); physical thermal printer hardware testing remains pending.
+  - `CAT-007` / `FIN-006` / `UX-006` (`Partial`): Wired compressed local `mediaVault.js` (`sku` photos in `Inventory.jsx`, `expense` receipt photos in `Finance.jsx`) explicitly labeled **Local Vault Only (Cloud Bucket Pending)**.
+  - `PLT-005` (`Partial`): Wired `PLAN_ENTITLEMENTS` and tenant `planTier` selector/quotas in `Network.jsx -> governance`.
+- **Honest P3–P8 `Partial` Reclassification (Previously Over-Grouped as `Deferred`)**:
+  - Documented 33 active Phase P3–P8 modules with real code/UI/API across `Dispatch.jsx` (`IDN-015`, `FUL-001/003/004/006`, `FIN-009`, `POS-016`), `Radar.jsx` (`CAT-006/014`, `RAD-001/002/004/005/007/011`), `Assistant.jsx` (`AI-001/003/005/006/015`), `Finance.jsx`/`Pos.jsx`/`kmsDomain.js` (`POS-005/012/015`, `FIN-015/016/018`, `CMP-001/002/003/005`), `Inventory.jsx` (`RAD-009`), and `Network.jsx` (`PLT-005`, `AI-010`).
+- **Explicit Retained Blockers (`35 Blocked`)**:
+  - `D-032` dual-backend Postgres ADR-001/003 (`PLT-001`, `FIN-002`), `D-028` plaintext offline `localStorage` encryption (`SEC-002`, `UX-002`, `POS-008`), `D-027` Kiswahili native review (`UX-012`), `C-011` discount/cash-variance owner policy (`IDN-009`, `POS-004`, `POS-020`), unprovisioned cloud buckets (`CAT-008` + cloud sync for `CAT-007`/`FIN-006`/`UX-006`), external SMS/WhatsApp/SMTP secrets (`NTF-003..005`, `INT-004/007/008`, `IDN-001/002/004/010/019`), hosted CI/staging (`OPS-006`, `OPS-007`, `PLT-008`), and compliance/security re-review (`SEC-011`, `SEC-012`, `UX-011`).
+
+
 

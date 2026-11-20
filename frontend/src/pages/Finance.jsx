@@ -1,7 +1,14 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney, nairobiDay } from '../lib/format.js'
 import { CHART_OF_ACCOUNTS, parseJournalLines } from '../lib/accountingEngine.js'
+import {
+  compressImageFile,
+  listMediaAttachments,
+  removeLocalMediaAttachment,
+  saveLocalMediaAttachment,
+} from '../lib/mediaVault.js'
 import {
   buildCashReconciliationReport,
   buildDailyBusinessSummary,
@@ -11,6 +18,8 @@ import {
   buildStockReport,
   exportReportToCsv,
 } from '../lib/reportingEngine.js'
+
+const VALID_FINANCE_TABS = ['eod', 'ledger', 'reports', 'etims']
 
 export default function Finance() {
   const {
@@ -36,7 +45,12 @@ export default function Finance() {
     appendAuditLog,
   } = useWorkspace()
 
-  const [tab, setTab] = useState('eod')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const tab = VALID_FINANCE_TABS.includes(rawTab) ? rawTab : 'eod'
+  const setTab = nextTab => {
+    setSearchParams(nextTab === 'eod' ? {} : { tab: nextTab }, { replace: true })
+  }
   const [busy, setBusy] = useState(false)
   const [cashCounted, setCashCounted] = useState('')
   const [eodResult, setEodResult] = useState(null)
@@ -45,6 +59,8 @@ export default function Finance() {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [pendingReceiptFile, setPendingReceiptFile] = useState(null)
+  const [expenseReceipts, setExpenseReceipts] = useState(() => listMediaAttachments('expense'))
 
   const branchSales = sales.filter(s => s.branchId === activeBranchId)
   const branchExpenses = expenses.filter(e => e.branchId === activeBranchId)
@@ -98,11 +114,22 @@ export default function Finance() {
     setError('')
     setMessage('')
     try {
-      await recordDailyExpense({
+      const saved = await recordDailyExpense({
         category: form.get('category'),
         amount: form.get('amount'),
         description: form.get('description') || '',
       })
+      if (pendingReceiptFile && saved?.id) {
+        const compressed = await compressImageFile(pendingReceiptFile)
+        saveLocalMediaAttachment('expense', {
+          ...compressed,
+          entityType: 'expense',
+          entityId: saved.id,
+          caption: `${form.get('category')} receipt (${compressed.fileName})`,
+        })
+        setExpenseReceipts(listMediaAttachments('expense'))
+        setPendingReceiptFile(null)
+      }
       event.currentTarget.reset()
       setMessage('Expense saved and balanced double-entry journal posted.')
     } catch (failure) {
@@ -223,18 +250,46 @@ export default function Finance() {
                 <label>Category<input name="category" placeholder="Boda Courier, Petty Cash, Airtime…" required /></label>
                 <label>Amount (KES)<input name="amount" type="number" min="1" step="0.01" required /></label>
                 <label>Description<input name="description" placeholder="Optional note" /></label>
+                <label>
+                  Receipt Photo (Optional · Local Compressed Vault)
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => setPendingReceiptFile(e.target.files?.[0] || null)}
+                  />
+                </label>
                 <button className="primary" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Record Expense & Post JE'}</button>
               </form>
               <ul className="draft-list mt-lg">
-                {branchExpenses.slice(0, 6).map(exp => (
-                  <li key={exp.id}>
-                    <div>
-                      <strong>{exp.category}</strong>
-                      <small>{exp.description || exp.expenseDate}</small>
-                    </div>
-                    <strong>{formatMoney(exp.amount)}</strong>
-                  </li>
-                ))}
+                {branchExpenses.slice(0, 6).map(exp => {
+                  const att = expenseReceipts.find(a => a.entityId === exp.id)
+                  return (
+                    <li key={exp.id}>
+                      <div>
+                        <strong>{exp.category}</strong>
+                        <small>{exp.description || exp.expenseDate}</small>
+                        {att && (
+                          <div className="inline-controls mt-xs">
+                            <a href={att.dataUrl} download={`receipt-${exp.id}.jpg`} className="text-button">
+                              Download Receipt Photo
+                            </a>
+                            <button
+                              type="button"
+                              className="btn-sm"
+                              onClick={() => {
+                                removeLocalMediaAttachment('expense', att.mediaId)
+                                setExpenseReceipts(listMediaAttachments('expense'))
+                              }}
+                            >
+                              Remove Photo
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <strong>{formatMoney(exp.amount)}</strong>
+                    </li>
+                  )
+                })}
               </ul>
             </section>
 

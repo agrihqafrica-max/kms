@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context.js'
 import { Brand, Loading } from '../components/States.jsx'
 import { t } from '../i18n/index.js'
+import sparesWorkshopBg from '../assets/spares_workshop_bg.jpg'
 
 function mapAuthError(failure) {
   const code = failure?.code || ''
@@ -12,13 +13,13 @@ function mapAuthError(failure) {
     return t('invalidCredentials')
   }
   if (code === 'auth/email-already-in-use') {
-    return 'An account with this email already exists. Switch to Sign In or Reset Password.'
+    return 'An account with this email already exists. Sign in or reset your password.'
   }
   if (code === 'auth/operation-not-allowed') {
-    return 'Enable this sign-in provider (Email/Password or GitHub) in Firebase Console → Authentication → Sign-in method, or use Continue with Gmail.'
+    return 'This sign-in method is not enabled yet. Use Continue with Google or contact your administrator.'
   }
   if (code === 'auth/account-exists-with-different-credential') {
-    return 'An account already exists with the same email under another sign-in method. Sign in with your original method first.'
+    return 'An account already exists with this email under another sign-in method.'
   }
   return failure?.message || t('authError')
 }
@@ -28,13 +29,9 @@ export default function AuthPage() {
     session,
     loading,
     notice,
-    authBackend,
-    setAuthBackend,
-    supabaseConfigured,
     retainShop,
     setRetainShop,
     signInGoogle,
-    signInGithub,
     signInWithPassword,
     signUpWithPassword,
     requestPasswordReset,
@@ -80,11 +77,17 @@ export default function AuthPage() {
     }
   }
 
+  function switchMode(nextMode) {
+    setMode(nextMode)
+    setError('')
+    setInfo('')
+  }
+
   async function handleFormSubmit(event) {
     event.preventDefault()
     if (mode === 'signin') {
       await runAction(async () => {
-        await signInWithPassword({ identifier, password, backend: authBackend })
+        await signInWithPassword({ identifier, password, backend: 'firebase' })
       })
     } else if (mode === 'signup') {
       if (password.length < 6) {
@@ -96,14 +99,14 @@ export default function AuthPage() {
         return
       }
       await runAction(async () => {
-        const result = await signUpWithPassword({ username, email, password, backend: authBackend })
+        const result = await signUpWithPassword({ username, email, password, backend: 'firebase' })
         if (result?.needsEmailConfirmation) {
           setInfo(t('checkEmailBody', { email: result.email }))
         }
       })
     } else if (mode === 'reset') {
       await runAction(async () => {
-        const result = await requestPasswordReset({ identifier, backend: authBackend })
+        const result = await requestPasswordReset({ identifier, backend: 'firebase' })
         setInfo(t('resetSent', { email: result.email }))
       })
     } else if (mode === 'otp') {
@@ -123,111 +126,30 @@ export default function AuthPage() {
 
   return (
     <main className="auth-page">
-      <section className="auth-intro">
-        <Brand />
-        <h2>{t('welcome')}</h2>
-        <p>{t('welcomeBody')}</p>
-        <div className="auth-company-list" aria-label="Ecosystem companies">
-          <strong>Companies inside Kenya Motorcycle Spare Parts General</strong>
-          <ul>
-            <li>Kenya Motor (Nairobi CBD &amp; Industrial Area)</li>
-            <li>Kirinyaga Spares &amp; Workshop</li>
-            <li>Rift Valley Boda Parts</li>
-            <li>Plus your own registered shops &amp; workshops</li>
-          </ul>
-        </div>
-        <small>{t('secureNote')}</small>
-      </section>
+      <div className="auth-bg-backdrop" aria-hidden="true">
+        <img
+          className="auth-bg-image"
+          src={sparesWorkshopBg}
+          alt=""
+          referrerPolicy="no-referrer"
+        />
+        <div className="auth-bg-scrim" />
+      </div>
 
-      <section className="auth-card">
-        <div className="auth-card-head">
-          <h1 tabIndex={-1}>{mode === 'signin' ? 'Sign in' : mode === 'signup' ? t('signUp') : mode === 'otp' ? 'Phone OTP Login' : t('resetPassword')}</h1>
-          <div className="backend-toggle" role="group" aria-label="Authentication backend">
-            <button
-              type="button"
-              className={authBackend === 'firebase' ? 'active' : ''}
-              onClick={() => {
-                setAuthBackend('firebase')
-                setError('')
-              }}
-              disabled={disabled}
-            >
-              Firebase
-            </button>
-            <button
-              type="button"
-              className={authBackend === 'supabase' ? 'active' : ''}
-              onClick={() => {
-                setAuthBackend('supabase')
-                setError('')
-              }}
-              disabled={disabled}
-            >
-              Supabase {supabaseConfigured ? '' : '(Setup)'}
-            </button>
-          </div>
+      <section className="auth-card" aria-label="Sign in to Kenya Motorcycle Spare Parts">
+        <div className="auth-brand-header">
+          <Brand showSub={false} asHeading />
         </div>
 
-        <div className="auth-tabs" role="tablist" aria-label="Sign-in mode">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'signin'}
-            className={mode === 'signin' ? 'active' : ''}
-            onClick={() => {
-              setMode('signin')
-              setError('')
-              setInfo('')
-            }}
-          >
-            Password
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'signup'}
-            className={mode === 'signup' ? 'active' : ''}
-            onClick={() => {
-              setMode('signup')
-              setError('')
-              setInfo('')
-            }}
-          >
-            Register
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'otp'}
-            className={mode === 'otp' ? 'active' : ''}
-            onClick={() => {
-              setMode('otp')
-              setError('')
-              setInfo('')
-            }}
-          >
-            Phone OTP
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'reset'}
-            className={mode === 'reset' ? 'active' : ''}
-            onClick={() => {
-              setMode('reset')
-              setError('')
-              setInfo('')
-            }}
-          >
-            Reset
-          </button>
-        </div>
-
-        {authBackend === 'supabase' && !supabaseConfigured && (
-          <p className="notice" role="status">
-            Supabase URL/Anon Key are not set in environment variables yet (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`). Configure them in Settings &gt; Secrets or switch to Firebase above.
-          </p>
-        )}
+        <h2 className="auth-mode-title">
+          {mode === 'signin'
+            ? 'Sign in'
+            : mode === 'signup'
+              ? 'Register'
+              : mode === 'otp'
+                ? 'Phone OTP'
+                : 'Reset password'}
+        </h2>
 
         {notice && <p className="notice" role="status">{notice}</p>}
         {info && <p className="notice" role="status">{info}</p>}
@@ -237,12 +159,13 @@ export default function AuthPage() {
           {mode === 'signin' && (
             <>
               <label>
-                {t('email')}
+                Email
                 <input
                   name="identifier"
                   type="text"
-                  autoComplete="username"
-                  placeholder="username or name@gmail.com"
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="name@example.com"
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
                   required
@@ -270,22 +193,18 @@ export default function AuthPage() {
                     onChange={e => setRetainShop(e.target.checked)}
                     disabled={disabled}
                   />
-                  Remember my shop / workshop
+                  Remember me
                 </label>
                 <button
                   type="button"
                   className="text-button"
-                  onClick={() => {
-                    setMode('reset')
-                    setError('')
-                  }}
+                  onClick={() => switchMode('reset')}
                 >
-                  {t('forgotPassword')}
+                  Forgot password?
                 </button>
               </div>
               <button className="primary login-submit-btn" type="submit" disabled={disabled}>
-                <span aria-hidden="true">→</span>
-                {disabled ? t('working') : t('signIn')}
+                {disabled ? t('working') : 'Sign in'}
               </button>
             </>
           )}
@@ -307,12 +226,12 @@ export default function AuthPage() {
                 />
               </label>
               <label>
-                {t('emailOnly')}
+                Email
                 <input
                   name="email"
                   type="email"
                   autoComplete="email"
-                  placeholder="name@gmail.com"
+                  placeholder="name@example.com"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
@@ -348,7 +267,7 @@ export default function AuthPage() {
                 />
               </label>
               <button className="primary login-submit-btn" type="submit" disabled={disabled}>
-                {disabled ? t('working') : 'Create Account & Send Email Verification'}
+                {disabled ? t('working') : 'Register'}
               </button>
             </>
           )}
@@ -386,7 +305,7 @@ export default function AuthPage() {
               )}
               <div className="actions-inline">
                 <button className="primary login-submit-btn" type="submit" disabled={disabled}>
-                  {disabled ? t('working') : otpSent ? 'Verify Code & Sign In' : 'Send SMS Verification Code'}
+                  {disabled ? t('working') : otpSent ? 'Verify Code & Sign In' : 'Send SMS Code'}
                 </button>
                 {otpSent && (
                   <button
@@ -407,12 +326,12 @@ export default function AuthPage() {
           {mode === 'reset' && (
             <>
               <label>
-                {t('email')}
+                Email
                 <input
                   name="identifier"
-                  type="text"
-                  autoComplete="username"
-                  placeholder="Enter your username or Gmail/email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="name@example.com"
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
                   required
@@ -427,31 +346,66 @@ export default function AuthPage() {
         </form>
 
         <div className="auth-divider" aria-hidden="true">
-          <span>or continue with</span>
+          <span>or</span>
         </div>
 
-        <div className="oauth-grid">
+        <button
+          className="oauth-btn google-signin-btn"
+          type="button"
+          onClick={() => void runAction(() => signInGoogle('firebase'))}
+          disabled={disabled}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="#4285F4"
+              d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
+            />
+          </svg>
+          <span>Continue with Google</span>
+        </button>
+
+        <div className="auth-mode-footer" role="tablist" aria-label="Sign-in options">
           <button
-            className="oauth-btn"
             type="button"
-            onClick={() => void runAction(() => signInGoogle(authBackend))}
+            role="tab"
+            aria-selected={mode === 'signin'}
+            className={`auth-mode-btn${mode === 'signin' ? ' active' : ''}`}
+            onClick={() => switchMode('signin')}
             disabled={disabled}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.8-5.5 3.8-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.9 1.5l2.7-2.6C16.9 3.2 14.7 2.2 12 2.2 6.6 2.2 2.2 6.6 2.2 12S6.6 21.8 12 21.8c6.9 0 9.6-4.8 9.6-7.3 0-.5-.1-.9-.1-1.3H12z" />
-            </svg>
-            <span>Gmail (Google)</span>
+            Password
           </button>
           <button
-            className="oauth-btn"
             type="button"
-            onClick={() => void runAction(() => signInGithub(authBackend))}
+            role="tab"
+            aria-selected={mode === 'signup'}
+            className={`auth-mode-btn${mode === 'signup' ? ' active' : ''}`}
+            onClick={() => switchMode('signup')}
             disabled={disabled}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-              <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55v-1.95c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.08 0 4.41-2.7 5.39-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.66.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
-            </svg>
-            <span>GitHub</span>
+            Register
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'otp'}
+            className={`auth-mode-btn${mode === 'otp' ? ' active' : ''}`}
+            onClick={() => switchMode('otp')}
+            disabled={disabled}
+          >
+            Phone OTP
           </button>
         </div>
       </section>
