@@ -1,7 +1,9 @@
 import express from 'express'
 import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { createHash, randomInt, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
 import { GoogleGenAI } from '@google/genai'
 import nodemailer from 'nodemailer'
 
@@ -1020,6 +1022,256 @@ function getAppBaseUrl(req) {
   const proto = req.get('x-forwarded-proto') || req.protocol || 'http'
   return `${proto}://${req.get('host')}`
 }
+
+const CREDENTIALS_STORE_PATH = path.join(os.tmpdir(), 'kms-auth-credentials.json')
+
+function readCredentialStore() {
+  try {
+    if (!fs.existsSync(CREDENTIALS_STORE_PATH)) return {}
+    const parsed = JSON.parse(fs.readFileSync(CREDENTIALS_STORE_PATH, 'utf8'))
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeCredentialStore(store) {
+  try {
+    fs.writeFileSync(CREDENTIALS_STORE_PATH, JSON.stringify(store, null, 2), { mode: 0o600 })
+  } catch {
+    // ignore disk write errors in read-only environments
+  }
+}
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex')
+  const derived = scryptSync(String(password), salt, 64).toString('hex')
+  return `${salt}:${derived}`
+}
+
+function verifyPassword(password, storedHash) {
+  const [salt, keyHex] = String(storedHash || '').split(':')
+  if (!salt || !keyHex) return false
+  const derived = scryptSync(String(password), salt, 64)
+  const expected = Buffer.from(keyHex, 'hex')
+  if (derived.length !== expected.length) return false
+  return timingSafeEqual(derived, expected)
+}
+
+const credentialUsers = new Map(Object.entries(readCredentialStore()))
+for (const record of credentialUsers.values()) {
+  if (record?.username && record?.email) {
+    usernameDirectory.set(record.username.toLowerCase(), record.email.toLowerCase())
+  }
+}
+
+const ALLOWED_STAFF_ROLES = new Set(['owner', 'manager', 'cashier', 'accountant', 'storekeeper'])
+
+function buildSafeAccountView(record) {
+  return {
+    id: record.id,
+    name: record.name || record.displayName || record.username,
+    email: record.email,
+    username: record.username,
+    displayName: record.name || record.displayName || record.username,
+    role: record.role || 'owner',
+    organizationId: record.organizationId || null,
+    branchId: record.branchId || null,
+    status: record.status || 'Active',
+    memberships: Array.isArray(record.memberships) ? record.memberships : null,
+    createdAt: record.createdAt || null,
+  }
+}
+
+app.post('/api/auth/credentials/register', (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  const username = String(req.body?.username || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  if (!email.includes('@')) {
+    return res.status(422).json({ detail: 'Enter a valid email address.' })
+  }
+  if (password.length < 6) {
+    return res.status(422).json({ detail: 'Use at least 6 characters for your password.' })
+  }
+  if (credentialUsers.has(email)) {
+    return res.status(409).json({
+      code: 'auth/email-already-in-use',
+      detail: 'An account with this email already exists. Sign in or reset your password.',
+    })
+  }
+  const cleanUser = username.length >= 2 ? username : email.split('@')[0]
+  const record = {
+    id: `cred-${randomUUID()}`,
+    name: cleanUser,
+    email,
+    username: cleanUser,
+    displayName: cleanUser,
+    role: 'owner',
+    organizationId: null,
+    branchId: null,
+    status: 'Active',
+    memberships: null,
+    passwordHash: hashPassword(password),
+    createdAt: new Date().toISOString(),
+  }
+  credentialUsers.set(email, record)
+  usernameDirectory.set(cleanUser, email)
+  writeCredentialStore(Object.fromEntries(credentialUsers.entries()))
+  return res.status(201).json({
+    ok: true,
+    user: {
+      ...buildSafeAccountView(record),
+      emailVerified: true,
+    },
+  })
+})
+
+app.post('/api/auth/credentials/login', (req, res) => {
+  const rawIdentifier = String(req.body?.identifier || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  if (!rawIdentifier || !password) {
+    return res.status(422).json({ detail: 'Email and password are required.' })
+  }
+  const resolvedEmail = rawIdentifier.includes('@')
+    ? rawIdentifier
+    : (usernameDirectory.get(rawIdentifier) || '')
+  const record = resolvedEmail ? credentialUsers.get(resolvedEmail) : null
+  if (!record) {
+    return res.status(404).json({
+      code: 'CREDENTIAL_USER_NOT_FOUND',
+      detail: 'No account found for this email.',
+    })
+  }
+  if (record.status === 'Deactivated') {
+    return res.status(403).json({
+      code: 'auth/user-disabled',
+      detail: 'This staff account has been deactivated by the company owner.',
+    })
+  }
+  if (!verifyPassword(password, record.passwordHash)) {
+    return res.status(401).json({
+      code: 'auth/invalid-credential',
+      detail: 'Invalid email or password. Please try again.',
+    })
+  }
+  return res.json({
+    ok: true,
+    user: {
+      ...buildSafeAccountView(record),
+      emailVerified: true,
+    },
+  })
+})
+
+app.get('/api/staff/accounts', (req, res) => {
+  const orgId = String(req.query?.organizationId || '').trim()
+  const rows = [...credentialUsers.values()]
+    .filter(r => r.organizationId && (!orgId || r.organizationId === orgId))
+    .map(buildSafeAccountView)
+  res.json({ staff: rows })
+})
+
+app.post('/api/staff/accounts', (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  const rawUsername = String(req.body?.username || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  const role = String(req.body?.role || 'cashier').trim().toLowerCase()
+  const organizationId = String(req.body?.organizationId || '').trim()
+  const organizationName = String(req.body?.organizationName || 'Company Workspace').trim()
+  const orgType = String(req.body?.orgType || 'RETAIL').trim()
+  const branchId = String(req.body?.branchId || '').trim()
+  const branchName = String(req.body?.branchName || 'Main Branch').trim()
+  const area = String(req.body?.area || 'Kenya').trim()
+
+  if (!name || name.length < 2) {
+    return res.status(422).json({ detail: 'Staff full name is required.' })
+  }
+  if (!email.includes('@')) {
+    return res.status(422).json({ detail: 'Valid staff email address is required.' })
+  }
+  if (!ALLOWED_STAFF_ROLES.has(role)) {
+    return res.status(422).json({ detail: 'Select a valid team role.' })
+  }
+  if (!organizationId || !branchId) {
+    return res.status(422).json({ detail: 'Company and assigned branch are required.' })
+  }
+  if (password.length < 6) {
+    return res.status(422).json({ detail: 'Staff password must be at least 6 characters.' })
+  }
+
+  const existing = credentialUsers.get(email)
+  const cleanUser =
+    rawUsername.length >= 2
+      ? rawUsername
+      : existing?.username || email.split('@')[0].replace(/[^a-z0-9_.-]/g, '')
+
+  const memberships = [
+    {
+      organization_id: organizationId,
+      organization_name: organizationName,
+      org_type: orgType,
+      branch_id: branchId,
+      branch_name: branchName,
+      area,
+      role,
+    },
+  ]
+
+  const record = {
+    id: existing?.id || `staff-${randomUUID()}`,
+    name,
+    email,
+    username: cleanUser,
+    displayName: name,
+    role,
+    organizationId,
+    branchId,
+    status: 'Active',
+    memberships,
+    passwordHash: hashPassword(password),
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  credentialUsers.set(email, record)
+  usernameDirectory.set(cleanUser, email)
+  writeCredentialStore(Object.fromEntries(credentialUsers.entries()))
+
+  return res.status(existing ? 200 : 201).json({
+    ok: true,
+    staff: buildSafeAccountView(record),
+  })
+})
+
+app.patch('/api/staff/accounts/:email/status', (req, res) => {
+  const email = decodeURIComponent(String(req.params.email || '')).trim().toLowerCase()
+  const record = credentialUsers.get(email)
+  if (!record) {
+    return res.status(404).json({ detail: 'Staff credential account not found.' })
+  }
+  if (req.body?.status && ['Active', 'Deactivated'].includes(req.body.status)) {
+    record.status = req.body.status
+  }
+  if (req.body?.role && ALLOWED_STAFF_ROLES.has(req.body.role)) {
+    record.role = req.body.role
+    if (Array.isArray(record.memberships) && record.memberships[0]) {
+      record.memberships[0].role = req.body.role
+    }
+  }
+  if (req.body?.branchId) {
+    record.branchId = String(req.body.branchId)
+    if (Array.isArray(record.memberships) && record.memberships[0]) {
+      record.memberships[0].branch_id = String(req.body.branchId)
+      if (req.body?.branchName) record.memberships[0].branch_name = String(req.body.branchName)
+      if (req.body?.area) record.memberships[0].area = String(req.body.area)
+    }
+  }
+  record.updatedAt = new Date().toISOString()
+  credentialUsers.set(email, record)
+  writeCredentialStore(Object.fromEntries(credentialUsers.entries()))
+  return res.json({ ok: true, staff: buildSafeAccountView(record) })
+})
 
 app.post('/api/auth/register-username', (req, res) => {
   const username = String(req.body?.username || '').trim().toLowerCase()

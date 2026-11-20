@@ -17,8 +17,11 @@ import {
   verifyWorkspaceBackupPayload,
   evaluateOnboardingChecklist,
   buildOpeningBalanceCutoverJournal,
+  canAccessNavItem,
+  canAccessRoute,
   generateEscPosReceipt,
   generateZplBarcodeLabel,
+  renderNotificationTemplate,
 } from '../src/lib/platformGovernance.js'
 import {
   buildDailyBusinessSummary,
@@ -287,4 +290,40 @@ test('cutover journal balances assets/AP against 3000 Opening Balance Equity and
   const zpl = generateZplBarcodeLabel({ partNumber: 'BJ-CSK-150', partName: 'Boxer Chain Kit', barcode: '6164001', retailPrice: 2200 })
   assert.match(zpl, /^\^XA[\s\S]*\^XZ$/)
   assert.match(zpl, /\^FD6164001\^FS/)
+})
+
+test('team RBAC restricts routes and navigation by role while rendering RADAR_ITEM_POSTED alerts', () => {
+  assert.equal(canAccessNavItem('owner', 'network'), true)
+  assert.equal(canAccessNavItem('manager', 'network'), false)
+  assert.equal(canAccessNavItem('manager', 'finance'), true)
+
+  assert.equal(canAccessNavItem('cashier', 'pos'), true)
+  assert.equal(canAccessNavItem('cashier', 'radar'), true)
+  assert.equal(canAccessNavItem('cashier', 'finance'), false)
+  assert.equal(canAccessNavItem('cashier', 'inventory'), false)
+
+  assert.equal(canAccessNavItem('storekeeper', 'inventory'), true)
+  assert.equal(canAccessNavItem('storekeeper', 'pos'), false)
+  assert.equal(canAccessNavItem('storekeeper', 'finance'), false)
+
+  assert.equal(canAccessNavItem('accountant', 'finance'), true)
+  assert.equal(canAccessNavItem('accountant', 'pos'), false)
+  assert.equal(canAccessNavItem('accountant', 'radar'), false)
+
+  assert.equal(canAccessRoute('cashier', '/app/finance', ''), false)
+  assert.equal(canAccessRoute('cashier', '/app/network', ''), false)
+  assert.equal(canAccessRoute('cashier', '/app/pos', '?tab=customers'), true)
+  assert.equal(canAccessRoute('storekeeper', '/app/inventory', '?tab=counts'), true)
+  assert.equal(canAccessRoute('storekeeper', '/app/pos', ''), false)
+  assert.equal(canAccessRoute('manager', '/app/network', '?tab=support'), true)
+  assert.equal(canAccessRoute('manager', '/app/network', ''), false)
+
+  const radarNotif = renderNotificationTemplate('RADAR_ITEM_POSTED', {
+    partDescription: 'Boxer BM150 Stator Coil',
+    motorcycleModel: 'Bajaj Boxer BM150',
+    urgencyStatus: 'Urgent',
+    locationArea: 'Kirinyaga Road',
+  })
+  assert.match(radarNotif.title, /Urgent.*Boxer BM150 Stator Coil/)
+  assert.match(radarNotif.body, /Kirinyaga Road/)
 })

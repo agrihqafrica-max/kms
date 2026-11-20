@@ -37,23 +37,24 @@
 }
 
 .brand-mark {
-  width: 36px;
+  width: 48px;
   height: 36px;
-  border-radius: 8px;
-  background: #0d1612;
-  border: 1px solid rgba(200, 30, 30, 0.55);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
   color: #f8fafc;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
 }
 
 .brand-logo-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
 }
 
 .brand strong,
@@ -1067,19 +1068,24 @@ textarea:focus {
 }
 
 .auth-brand-header .brand-mark {
-  width: 46px;
-  height: 46px;
-  border-radius: 9px;
-  background: #0d1612;
-  border: 1px solid rgba(200, 30, 30, 0.65);
-  box-shadow: 0 3px 10px rgba(15, 23, 20, 0.22);
+  width: 68px;
+  height: 50px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.auth-brand-header .brand-logo-img {
+  filter: drop-shadow(0 3px 6px rgba(15, 23, 20, 0.22));
 }
 
 .auth-brand-header .brand-title {
   margin: 0;
-  font: 800 17px/1.2 var(--font-display);
+  font: 800 16px/1.22 var(--font-display);
   letter-spacing: -0.02em;
   color: var(--text-h);
+  text-wrap: balance;
 }
 
 .auth-mode-title {
@@ -1780,9 +1786,9 @@ textarea:focus {
 }
 
 .dock-panel {
-  width: 340px;
-  max-width: calc(100vw - 28px);
-  max-height: 75vh;
+  width: 410px;
+  max-width: calc(100vw - 24px);
+  max-height: 82vh;
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border-strong);
@@ -1791,6 +1797,89 @@ textarea:focus {
   box-shadow: 0 14px 36px rgba(15, 23, 20, 0.2);
   display: grid;
   gap: 10px;
+}
+
+.dock-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dock-tab {
+  min-height: 28px;
+  padding: 4px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 5px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.dock-tab:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dock-tab.active {
+  background: #10261c;
+  border-color: #10261c;
+  color: #ffffff;
+}
+
+.dock-list {
+  display: grid;
+  gap: 7px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.dock-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--surface);
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.dock-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dock-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.dock-kpi {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.dock-kpi span {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dock-kpi strong {
+  display: block;
+  font-size: 14px;
+  color: var(--text-h);
+  margin-top: 2px;
 }
 
 .dock-calc-grid {

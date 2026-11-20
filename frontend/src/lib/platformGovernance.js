@@ -41,6 +41,125 @@ export const ROLE_APPROVAL_LIMITS = {
   owner: { maxDiscountPct: 100, maxDirectRefundKes: Infinity, maxPayoutApproveKes: Infinity },
 }
 
+export const ROLE_NAV_ACCESS = {
+  owner: new Set([
+    'overview',
+    'pos',
+    'pos_returns',
+    'pos_shifts',
+    'pos_customers',
+    'dispatch',
+    'inventory',
+    'inventory_locations',
+    'inventory_reorder',
+    'inventory_procurement',
+    'inventory_counts',
+    'radar',
+    'finance',
+    'finance_ledger',
+    'finance_reports',
+    'assistant',
+    'network',
+    'network_health',
+    'network_support',
+  ]),
+  manager: new Set([
+    'overview',
+    'pos',
+    'pos_returns',
+    'pos_shifts',
+    'pos_customers',
+    'dispatch',
+    'inventory',
+    'inventory_locations',
+    'inventory_reorder',
+    'inventory_procurement',
+    'inventory_counts',
+    'radar',
+    'finance',
+    'finance_ledger',
+    'finance_reports',
+    'assistant',
+    'network_support',
+  ]),
+  cashier: new Set([
+    'overview',
+    'pos',
+    'pos_returns',
+    'pos_shifts',
+    'pos_customers',
+    'dispatch',
+    'radar',
+  ]),
+  storekeeper: new Set([
+    'overview',
+    'dispatch',
+    'inventory',
+    'inventory_locations',
+    'inventory_reorder',
+    'inventory_procurement',
+    'inventory_counts',
+    'radar',
+  ]),
+  accountant: new Set([
+    'overview',
+    'dispatch',
+    'inventory_procurement',
+    'finance',
+    'finance_ledger',
+    'finance_reports',
+  ]),
+}
+
+export const ROLE_TEAM_DESCRIPTIONS = {
+  cashier: 'Counter Sales Team · POS, Returns, Cash Drawer, Customers, Dispatch & Parts Radar (no cost prices, finance, or owner reports)',
+  storekeeper: 'Stock & Supply Team · Parts Catalogue, Bins, Reorder, Procurement & GRN, Cycle Counts, Dispatch & Parts Radar',
+  accountant: 'Finance & Audit Team · Finance & EOD, General Ledger, Reports & Exports, Procurement Verification & Dispatch Credit',
+  manager: 'Operations Manager · Counter POS, Supply, Finance & AI Co-Pilot (excludes Owner Day Report & Owner Staff/Governance)',
+  owner: 'Company Owner · Full access including Staff Credential Creation, Governance & Owner Day Report',
+}
+
+export function canAccessNavItem(role = 'owner', navId = 'overview') {
+  const allowed = ROLE_NAV_ACCESS[role] || ROLE_NAV_ACCESS.cashier
+  return allowed.has(navId)
+}
+
+export function canAccessRoute(role = 'owner', pathname = '/app/overview', search = '') {
+  const allowed = ROLE_NAV_ACCESS[role] || ROLE_NAV_ACCESS.cashier
+  if (pathname === '/app' || pathname === '/app/overview') return allowed.has('overview')
+  if (pathname === '/app/pos') {
+    const tab = new URLSearchParams(search || '').get('tab') || 'register'
+    if (tab === 'returns') return allowed.has('pos_returns')
+    if (tab === 'shifts') return allowed.has('pos_shifts')
+    if (tab === 'customers') return allowed.has('pos_customers')
+    return allowed.has('pos')
+  }
+  if (pathname === '/app/dispatch') return allowed.has('dispatch')
+  if (pathname === '/app/inventory') {
+    const tab = new URLSearchParams(search || '').get('tab') || 'catalogue'
+    if (tab === 'locations') return allowed.has('inventory_locations')
+    if (tab === 'reorder') return allowed.has('inventory_reorder')
+    if (tab === 'procurement') return allowed.has('inventory_procurement')
+    if (tab === 'counts') return allowed.has('inventory_counts')
+    return allowed.has('inventory')
+  }
+  if (pathname === '/app/radar') return allowed.has('radar')
+  if (pathname === '/app/finance') {
+    const tab = new URLSearchParams(search || '').get('tab') || 'eod'
+    if (tab === 'ledger') return allowed.has('finance_ledger')
+    if (tab === 'reports') return allowed.has('finance_reports')
+    return allowed.has('finance')
+  }
+  if (pathname === '/app/assistant') return allowed.has('assistant')
+  if (pathname === '/app/network') {
+    const tab = new URLSearchParams(search || '').get('tab') || 'governance'
+    if (tab === 'health') return allowed.has('network_health')
+    if (tab === 'support') return allowed.has('network_support')
+    return allowed.has('network')
+  }
+  return true
+}
+
 export function resolveEffectivePermissions(staffMember = null, roleOverride = null) {
   const role = staffMember?.role || roleOverride || 'owner'
   const baseLimits = ROLE_APPROVAL_LIMITS[role] || ROLE_APPROVAL_LIMITS.cashier
@@ -89,11 +208,15 @@ export const NOTIFICATION_TEMPLATES = {
   }),
   SALE_RECEIPT: ({ saleId, totalAmount, customerName }) => ({
     title: `Receipt ${saleId}`,
-    body: `Thank you ${customerName || 'Customer'}. Confirmed KES ${Number(totalAmount || 0).toLocaleString()} at Kenya Motorcycle Spare Parts General.`,
+    body: `Thank you ${customerName || 'Customer'}. Confirmed KES ${Number(totalAmount || 0).toLocaleString()} at Kenya Motorcycle Spare Parts Ecosystem.`,
   }),
   RETURN_APPROVED: ({ partNumber, refundAmount, refundMethod }) => ({
     title: `Return approved: ${partNumber}`,
     body: `Refund of KES ${Number(refundAmount || 0).toLocaleString()} approved via ${refundMethod} and stock restored to branch ledger.`,
+  }),
+  RADAR_ITEM_POSTED: ({ partDescription, motorcycleModel, urgencyStatus, locationArea }) => ({
+    title: `Radar Request (${urgencyStatus || 'Normal'}): ${partDescription}`,
+    body: `${motorcycleModel || 'Universal bike'} needed in ${locationArea || 'Nairobi'}. Open Parts Radar or Quick Dock to quote/source.`,
   }),
   MARKETING_PROMO: ({ partName, discountLabel }) => ({
     title: `Special spares offer: ${partName}`,

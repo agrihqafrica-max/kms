@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/context.js'
 import { useTenant } from '../tenancy/context.js'
-import { useWorkspace } from '../lib/workspaceContext.js'
+import { getBranchesForOrganization, useWorkspace } from '../lib/workspaceContext.js'
 import { formatMoney } from '../lib/format.js'
 import { blindStockProjection, classifyStockVelocity } from '../lib/kmsDomain.js'
 import {
   PLAN_ENTITLEMENTS,
   ROLE_APPROVAL_LIMITS,
+  ROLE_TEAM_DESCRIPTIONS,
+  canAccessNavItem,
   evaluateOnboardingChecklist,
   evaluateOpsAlertRules,
 } from '../lib/platformGovernance.js'
@@ -61,7 +63,8 @@ export default function Network() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = searchParams.get('tab')
-  const tab = VALID_NETWORK_TABS.includes(rawTab) ? rawTab : 'governance'
+  const defaultTab = canAccessNavItem(context.role, 'network') ? 'governance' : 'support'
+  const tab = VALID_NETWORK_TABS.includes(rawTab) ? rawTab : defaultTab
   const setTab = nextTab => {
     setSearchParams(nextTab === 'governance' ? {} : { tab: nextTab }, { replace: true })
   }
@@ -70,6 +73,9 @@ export default function Network() {
   const [emailStatus, setEmailStatus] = useState({ configured: false, provider: 'none' })
   const [serverMetrics, setServerMetrics] = useState(null)
   const [integrationRegistry, setIntegrationRegistry] = useState([])
+  const [serverStaffAccounts, setServerStaffAccounts] = useState([])
+  const [staffRoleChoice, setStaffRoleChoice] = useState('cashier')
+  const [staffBusy, setStaffBusy] = useState(false)
   const [backupCheckResult, setBackupCheckResult] = useState(null)
   const [restoreDrillResult, setRestoreDrillResult] = useState(null)
   const [backupPassphrase, setBackupPassphrase] = useState('')
@@ -79,7 +85,7 @@ export default function Network() {
   )
   const [emailBody, setEmailBody] = useState(
     () =>
-      `Hello,\n\nThis is a dispatch summary from ${context.organization_name || 'Kenya Motor'} inside Kenya Motorcycle Spare Parts General.\n\nActive branch: ${context.branch_id || activeBranchId}\nTotal catalogue SKUs tracked: ${inventory.length}\n\nRegards,\n${session?.user?.displayName || 'Workspace Operator'}`,
+      `Hello,\n\nThis is a dispatch summary from ${context.organization_name || 'Kenya Motor'} inside Kenya Motorcycle Spare Parts Ecosystem.\n\nActive branch: ${context.branch_id || activeBranchId}\nTotal catalogue SKUs tracked: ${inventory.length}\n\nRegards,\n${session?.user?.displayName || 'Workspace Operator'}`,
   )
   const [emailBusy, setEmailBusy] = useState(false)
   const [emailFeedback, setEmailFeedback] = useState('')
@@ -109,6 +115,33 @@ export default function Network() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+    const orgQuery = context.organization_id ? `?organizationId=${encodeURIComponent(context.organization_id)}` : ''
+    fetch(`/api/staff/accounts${orgQuery}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (active && Array.isArray(data?.staff)) {
+          setServerStaffAccounts(data.staff)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [context.organization_id])
+
+  const companyBranches = getBranchesForOrganization(context.organization_id, branches)
+  const branchLookup = new Map(branches.map(b => [b.id, b]))
+  const mergedCompanyStaff = [
+    ...serverStaffAccounts,
+    ...staffMembers.filter(
+      st =>
+        (!st.organizationId || st.organizationId === context.organization_id) &&
+        !serverStaffAccounts.some(srv => srv.email.toLowerCase() === String(st.email || '').toLowerCase()),
+    ),
+  ]
 
   const targetBranchId = context.branch_id || activeBranchId
   const membershipMatch = memberships.find(
@@ -237,18 +270,101 @@ export default function Network() {
     setGovNotice(`Saved branch ${saved.name} (${saved.status}).`)
   }
 
-  function handleSaveStaff(event) {
+  async function handleSaveStaff(event) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const saved = addOrUpdateStaffMember({
-      name: form.get('name'),
-      email: form.get('email'),
-      role: form.get('role'),
-      branchId: form.get('branchId'),
-      status: 'Active',
-    })
-    event.currentTarget.reset()
-    setGovNotice(`Saved staff profile ${saved.name} (${saved.role}).`)
+    setGovError('')
+    setGovNotice('')
+    const formEl = event.currentTarget
+    const form = new FormData(formEl)
+    const name = String(form.get('name') || '').trim()
+    const username = String(form.get('username') || '').trim().toLowerCase()
+    const email = String(form.get('email') || '').trim().toLowerCase()
+    const password = String(form.get('password') || '')
+    const role = String(form.get('role') || 'cashier')
+    const branchId = String(form.get('branchId') || activeBranchId)
+    const branchObj = branchLookup.get(branchId) || companyBranches[0]
+
+    if (password.length < 6) {
+      setGovError('Staff password must be at least 6 characters.')
+      return
+    }
+
+    setStaffBusy(true)
+    try {
+      const res = await fetch('/api/staff/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          username,
+          email,
+          password,
+          role,
+          organizationId: context.organization_id,
+          organizationName: context.organization_name,
+          branchId: branchObj?.id || branchId,
+          branchName: branchObj?.name || 'Main Shop',
+          area: branchObj?.area || 'Kenya',
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.detail || 'Could not provision staff account.')
+      }
+
+      const created = data.staff
+      setServerStaffAccounts(prev => [created, ...prev.filter(s => s.email !== created.email)])
+      addOrUpdateStaffMember({
+        id: created.id,
+        name: created.name,
+        email: created.email,
+        role: created.role,
+        branchId: created.branchId,
+        status: 'Active',
+      })
+      void appendAuditLog?.(
+        'STAFF_ACCOUNT_CREATED',
+        'Governance',
+        `Owner created ${created.role} login (${created.email} / @${created.username}) for ${context.organization_name}`,
+      )
+      formEl.reset()
+      setStaffRoleChoice('cashier')
+      setGovNotice(
+        `Created ${created.role.toUpperCase()} credentials for ${created.name} inside ${context.organization_name}. They can sign in with ${created.email} or username "${created.username}".`,
+      )
+    } catch (err) {
+      setGovError(err?.message || 'Could not create staff login credentials.')
+    } finally {
+      setStaffBusy(false)
+    }
+  }
+
+  async function handleToggleStaffStatus(staffRow) {
+    const nextStatus = staffRow.status === 'Active' ? 'Deactivated' : 'Active'
+    setGovError('')
+    setGovNotice('')
+    try {
+      const hasServerCredential = serverStaffAccounts.some(s => s.email === staffRow.email)
+      if (hasServerCredential && staffRow.email) {
+        const res = await fetch(`/api/staff/accounts/${encodeURIComponent(staffRow.email)}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: nextStatus }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(data.detail || 'Could not update staff login status.')
+        }
+        setServerStaffAccounts(prev => prev.map(s => (s.email === staffRow.email ? data.staff : s)))
+      }
+      addOrUpdateStaffMember({
+        ...staffRow,
+        status: nextStatus,
+      })
+      setGovNotice(`${staffRow.name} (${staffRow.email}) is now ${nextStatus}.`)
+    } catch (err) {
+      setGovError(err?.message || 'Failed to update staff status.')
+    }
   }
 
   async function handleEnrollDevice(event) {
@@ -360,11 +476,19 @@ export default function Network() {
           </div>
           <div className="tab-strip" role="tablist" aria-label="Network and governance tabs">
             {[
-              ['governance', 'Tenant, Staff & Devices'],
-              ['email', 'Email & Mail Delivery'],
-              ['health', `Observability, Keys & Backups (${auditLogs.length})`],
-              ['marketplace', `Blind Catalogue & Forecast (${blindCatalogue.length})`],
-              ['support', `Support & Sandbox (${supportTickets.filter(t => t.status === 'Open').length})`],
+              ...(canAccessNavItem(context.role, 'network')
+                ? [
+                    ['governance', 'Tenant, Staff & Devices'],
+                    ['email', 'Email & Mail Delivery'],
+                    ['marketplace', `Blind Catalogue & Forecast (${blindCatalogue.length})`],
+                  ]
+                : []),
+              ...(canAccessNavItem(context.role, 'network_health')
+                ? [['health', `Observability, Keys & Backups (${auditLogs.length})`]]
+                : []),
+              ...(canAccessNavItem(context.role, 'network_support')
+                ? [['support', `Support & Sandbox (${supportTickets.filter(t => t.status === 'Open').length})`]]
+                : []),
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -527,70 +651,90 @@ export default function Network() {
             </section>
 
             <section className="card">
-              <h2>Staff Directory &amp; Role Limits (IDN-007 / IDN-009)</h2>
+              <div className="card-head wrap-head">
+                <div>
+                  <h2>Staff Credentials &amp; Role Access ({context.organization_name})</h2>
+                  <p className="muted">
+                    Create staff login credentials locked to <strong>{context.organization_name}</strong> and their team role.
+                  </p>
+                </div>
+                <span className="status-tag ok">{mergedCompanyStaff.length} Staff</span>
+              </div>
+
               <div className="saas-table-wrap">
                 <table className="saas-table">
                   <thead>
                     <tr>
-                      <th>Staff</th>
-                      <th>Role</th>
+                      <th>Staff &amp; Username</th>
+                      <th>Team Role</th>
                       <th>Branch</th>
-                      <th>Status</th>
+                      <th>Login Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {staffMembers.map(st => (
-                      <tr key={st.id}>
-                        <td>
-                          <span className="cell-title">{st.name}</span>
-                          <span className="cell-sub">{st.email}</span>
-                        </td>
-                        <td>{String(st.role).toUpperCase()}</td>
-                        <td className="mono">{st.branchId}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className={st.status === 'Active' ? 'status-tag ok' : 'status-tag danger'}
-                            onClick={() =>
-                              addOrUpdateStaffMember({
-                                ...st,
-                                status: st.status === 'Active' ? 'Deactivated' : 'Active',
-                              })
-                            }
-                          >
-                            {st.status}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {mergedCompanyStaff.map(st => {
+                      const bName = branchLookup.get(st.branchId)?.name || st.branchId
+                      return (
+                        <tr key={st.id || st.email}>
+                          <td>
+                            <span className="cell-title">{st.name}</span>
+                            <span className="cell-sub">{st.email}{st.username ? ` · @${st.username}` : ''}</span>
+                          </td>
+                          <td>{String(st.role).toUpperCase()}</td>
+                          <td>{bName}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={st.status === 'Active' ? 'status-tag ok' : 'status-tag danger'}
+                              onClick={() => void handleToggleStaffStatus(st)}
+                            >
+                              {st.status || 'Active'}
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
 
-              <form className="inventory-form" onSubmit={handleSaveStaff}>
-                <h3>Invite / Add Staff Member</h3>
+              <form className="inventory-form" onSubmit={e => void handleSaveStaff(e)}>
+                <h3>Create Staff Account &amp; Credentials</h3>
                 <div className="form-grid">
-                  <label>Full Name<input name="name" required placeholder="Mercy Wanjiku" /></label>
-                  <label>Email<input name="email" type="email" required placeholder="mercy@kenyamoto.co.ke" /></label>
+                  <label>Full Name<input name="name" required placeholder="Mercy Wanjiku" disabled={staffBusy} /></label>
+                  <label>Username<input name="username" required minLength={2} placeholder="mercy.cbd" disabled={staffBusy} /></label>
+                  <label>Email<input name="email" type="email" required placeholder="mercy@kenyamoto.co.ke" disabled={staffBusy} /></label>
+                  <label>Login Password<input name="password" type="password" required minLength={6} placeholder="Min 6 characters" disabled={staffBusy} /></label>
                   <label>
-                    Role
-                    <select name="role" defaultValue="cashier">
-                      <option value="cashier">Cashier (Max 5% disc)</option>
-                      <option value="manager">Branch Manager (Max 15% disc)</option>
-                      <option value="accountant">Accountant</option>
-                      <option value="owner">Owner</option>
+                    Team Role
+                    <select
+                      name="role"
+                      value={staffRoleChoice}
+                      onChange={e => setStaffRoleChoice(e.target.value)}
+                      disabled={staffBusy}
+                    >
+                      <option value="cashier">Cashier · Counter Sales Team</option>
+                      <option value="storekeeper">Storekeeper · Stock &amp; Supply Team</option>
+                      <option value="accountant">Accountant · Finance &amp; Audit Team</option>
+                      <option value="manager">Branch Manager · Operations Team</option>
+                      <option value="owner">Co-Owner · Full Company Control</option>
                     </select>
                   </label>
                   <label>
-                    Assigned Branch
-                    <select name="branchId" defaultValue={activeBranchId}>
-                      {branches.map(b => (
+                    Assigned Branch ({context.organization_name})
+                    <select name="branchId" defaultValue={companyBranches[0]?.id || activeBranchId} disabled={staffBusy}>
+                      {companyBranches.map(b => (
                         <option key={b.id} value={b.id}>{b.name}</option>
                       ))}
                     </select>
                   </label>
                 </div>
-                <button className="primary" type="submit">Add Staff Member</button>
+                <p className="notice" role="note">
+                  {ROLE_TEAM_DESCRIPTIONS[staffRoleChoice] || ROLE_TEAM_DESCRIPTIONS.cashier}
+                </p>
+                <button className="primary" type="submit" disabled={staffBusy}>
+                  {staffBusy ? 'Creating Staff Login…' : 'Create Staff Account & Credentials'}
+                </button>
               </form>
             </section>
           </div>

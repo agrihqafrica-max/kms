@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { t } from '../i18n/index.js'
-import redMotoGpLogo from '../assets/red_motogp_logo.jpg'
+import redMotoGpLogo from '../assets/red_motogp_logo.png'
 
 export function Loading() { return <div className="state-panel" role="status">{t('loading')}</div> }
 export function ErrorState({ error, retry }) {

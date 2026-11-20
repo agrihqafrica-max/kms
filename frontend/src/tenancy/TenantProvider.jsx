@@ -25,7 +25,19 @@ function writeCustomOrgs(userId, rows) {
   }
 }
 
-function buildMemberships(userId) {
+function buildMemberships(userId, sessionUser = null) {
+  if (Array.isArray(sessionUser?.memberships) && sessionUser.memberships.length > 0) {
+    return sessionUser.memberships.map(m => ({
+      organization_id: m.organization_id,
+      organization_name: m.organization_name || 'Assigned Company',
+      org_type: m.org_type || 'RETAIL',
+      branch_id: m.branch_id,
+      branch_name: m.branch_name || 'Assigned Branch',
+      area: m.area || 'Kenya',
+      role: m.role || sessionUser.role || 'cashier',
+    }))
+  }
+
   const rows = []
   for (const company of COMPANIES) {
     const companyBranches = BRANCHES.filter(b => b.organizationId === company.id)
@@ -51,11 +63,17 @@ function buildMemberships(userId) {
 export default function TenantProvider({ children }) {
   const { session } = useAuth()
   const userId = session.user.id
+  const sessionUser = session.user
   const [revision, setRevision] = useState(0)
   const [state, setState] = useState(() => {
-    const memberships = buildMemberships(userId)
+    const memberships = buildMemberships(userId, sessionUser)
+    const defaultOrgId = memberships[0]?.organization_id || 'org-kenyamotor'
+    const defaultBranchId = memberships[0]?.branch_id || 'branch-cbd'
     const saved = readSelection(userId)
-    const selected = resolveSelection(memberships, saved.organizationId ? saved : { organizationId: 'org-kenyamotor', branchId: 'branch-cbd' })
+    const selected = resolveSelection(
+      memberships,
+      saved.organizationId ? saved : { organizationId: defaultOrgId, branchId: defaultBranchId },
+    )
     const match =
       memberships.find(
         m => m.organization_id === selected.organizationId && (!selected.branchId || m.branch_id === selected.branchId),
@@ -81,20 +99,25 @@ export default function TenantProvider({ children }) {
   })
 
   useEffect(() => {
-    const memberships = buildMemberships(userId)
+    const memberships = buildMemberships(userId, sessionUser)
+    const defaultOrgId = memberships[0]?.organization_id || 'org-kenyamotor'
+    const defaultBranchId = memberships[0]?.branch_id || 'branch-cbd'
     const saved = readSelection(userId)
-    const selected = resolveSelection(memberships, saved.organizationId ? saved : { organizationId: 'org-kenyamotor', branchId: 'branch-cbd' })
+    const selected = resolveSelection(
+      memberships,
+      saved.organizationId ? saved : { organizationId: defaultOrgId, branchId: defaultBranchId },
+    )
     const match =
       memberships.find(
         m => m.organization_id === selected.organizationId && (!selected.branchId || m.branch_id === selected.branchId),
       ) || memberships[0]
     storeSelection(userId, { organizationId: match.organization_id, branchId: match.branch_id })
     api.setScope({ userId, organizationId: match.organization_id, branchId: match.branch_id })
-  }, [userId])
+  }, [userId, sessionUser])
 
   const choose = useCallback(
     (organizationId, branchId = null) => {
-      const memberships = buildMemberships(userId)
+      const memberships = buildMemberships(userId, sessionUser)
       const resolved = resolveSelection(memberships, { organizationId, branchId })
       const match =
         memberships.find(
@@ -118,7 +141,7 @@ export default function TenantProvider({ children }) {
         },
       }))
     },
-    [userId],
+    [userId, sessionUser],
   )
 
   const addOrganization = useCallback(

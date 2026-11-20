@@ -1,6 +1,6 @@
 export default {
-  brand: 'Kenya Motorcycle Spare Parts', brandSub: 'Workspace', brandMark: 'KM',
-  welcome: 'Kenya Motorcycle Spare Parts', welcomeBody: '',
+  brand: 'Kenya Motorcycle Spare Parts Ecosystem', brandSub: 'Workspace', brandMark: 'KM',
+  welcome: 'Kenya Motorcycle Spare Parts Ecosystem', welcomeBody: '',
   secureNote: '',
   signIn: 'Sign in', signUp: 'Register', signOut: 'Sign out', email: 'Email', emailOnly: 'Email', username: 'Username', password: 'Password', confirmPassword: 'Confirm password',
   authInProgress: 'Another sign-in request is still finishing. Try again in a moment.',

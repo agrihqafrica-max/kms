@@ -136,7 +136,7 @@ export default function AuthPage() {
         <div className="auth-bg-scrim" />
       </div>
 
-      <section className="auth-card" aria-label="Sign in to Kenya Motorcycle Spare Parts">
+      <section className="auth-card" aria-label="Sign in to Kenya Motorcycle Spare Parts Ecosystem">
         <div className="auth-brand-header">
           <Brand showSub={false} asHeading />
         </div>

@@ -13,7 +13,6 @@ import {
   signInWithGithub,
   signInWithGoogle,
   signOutFirebase,
-  signUpWithEmail,
   testConnection,
 } from '../lib/firebase.js'
 
@@ -67,14 +66,16 @@ async function resolveIdentifierToEmail(identifier) {
 }
 
 function readLocalOAuthSession() {
-  try {
-    const raw = window.sessionStorage.getItem(OAUTH_SESSION_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed?.user?.id) return parsed
+  for (const store of [window.sessionStorage, window.localStorage]) {
+    try {
+      const raw = store.getItem(OAUTH_SESSION_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.user?.id) return parsed
+      }
+    } catch {
+      // ignore storage access issues
     }
-  } catch {
-    // ignore
   }
   try {
     const isLocalHost =
@@ -88,6 +89,34 @@ function readLocalOAuthSession() {
     return parsed
   } catch {
     return null
+  }
+}
+
+function persistLocalOAuthSession(session, remember = true) {
+  const serialized = JSON.stringify(session)
+  try {
+    window.sessionStorage.setItem(OAUTH_SESSION_KEY, serialized)
+  } catch {
+    // ignore
+  }
+  try {
+    if (remember) {
+      window.localStorage.setItem(OAUTH_SESSION_KEY, serialized)
+    } else {
+      window.localStorage.removeItem(OAUTH_SESSION_KEY)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function clearLocalOAuthSession() {
+  for (const store of [window.sessionStorage, window.localStorage]) {
+    try {
+      store.removeItem(OAUTH_SESSION_KEY)
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -216,22 +245,71 @@ export default function AuthProvider({ children }) {
   const signInWithPassword = useCallback(
     ({ identifier, password, backend = authBackend }) => {
       return runAuth(async () => {
-        const email = await resolveIdentifierToEmail(identifier)
+        const cleanIdentifier = String(identifier || '').trim()
+        if (!cleanIdentifier) throw new Error('Enter your email address.')
         if (!password) throw new Error('Password is required.')
 
         if (backend === 'supabase') {
           if (isMockMode) {
-            throw new Error('Supabase is not configured yet (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY), or switch the Auth Engine toggle to Firebase.')
+            throw new Error('Authentication service unavailable.')
           }
+          const email = await resolveIdentifierToEmail(cleanIdentifier)
           const { data, error } = await supabase.auth.signInWithPassword({ email, password })
           if (error) throw error
           return data
         }
 
-        return signInWithEmail(email, password)
+        const credRes = await fetch('/api/auth/credentials/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: cleanIdentifier, password }),
+        })
+        const credData = await credRes.json().catch(() => ({}))
+        if (credRes.ok && credData.user) {
+          const session = {
+            access_token: 'credentials-session',
+            provider: 'credentials',
+            user: {
+              id: credData.user.id,
+              email: credData.user.email,
+              username: credData.user.username || '',
+              displayName: credData.user.displayName || credData.user.username || 'Workspace User',
+              role: credData.user.role || 'owner',
+              organizationId: credData.user.organizationId || null,
+              branchId: credData.user.branchId || null,
+              memberships: Array.isArray(credData.user.memberships) ? credData.user.memberships : null,
+              emailVerified: true,
+            },
+          }
+          persistLocalOAuthSession(session, retainShop)
+          const now = Date.now()
+          setSessionStartedAt(now)
+          identity.current = session.user.id
+          api.setScope({ userId: session.user.id })
+          setState({ session, loading: false, recovery: null, notice: '' })
+          return session
+        }
+
+        if (credRes.status === 401 || credRes.status === 403) {
+          const err = new Error(credData.detail || t('invalidCredentials'))
+          err.code = credData.code || 'auth/invalid-credential'
+          throw err
+        }
+
+        const email = await resolveIdentifierToEmail(cleanIdentifier)
+        try {
+          return await signInWithEmail(email, password)
+        } catch (err) {
+          if (err?.code === 'auth/operation-not-allowed') {
+            const friendly = new Error('No account matches this email and password. Click Register below to create your credentials, or Continue with Google.')
+            friendly.code = 'auth/invalid-credential'
+            throw friendly
+          }
+          throw err
+        }
       })
     },
-    [authBackend, runAuth],
+    [authBackend, retainShop, runAuth],
   )
 
   const signUpWithPassword = useCallback(
@@ -242,18 +320,9 @@ export default function AuthProvider({ children }) {
         if (!cleanEmail.includes('@')) throw new Error('Enter a valid email address.')
         if (!password || password.length < 6) throw new Error(t('passwordShort'))
 
-        if (cleanUsername) {
-          saveUsernameLocal(cleanUsername, cleanEmail)
-          await fetch('/api/auth/register-username', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: cleanUsername, email: cleanEmail }),
-          }).catch(() => {})
-        }
-
         if (backend === 'supabase') {
           if (isMockMode) {
-            throw new Error('Supabase is not configured yet (set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY), or switch the Auth Engine toggle to Firebase.')
+            throw new Error('Authentication service unavailable.')
           }
           const { data, error } = await supabase.auth.signUp({
             email: cleanEmail,
@@ -271,15 +340,44 @@ export default function AuthProvider({ children }) {
           }
         }
 
-        const cred = await signUpWithEmail(cleanEmail, password, cleanUsername || cleanEmail.split('@')[0])
+        const regRes = await fetch('/api/auth/credentials/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: cleanUsername, email: cleanEmail, password }),
+        })
+        const regData = await regRes.json().catch(() => ({}))
+        if (!regRes.ok || !regData.user) {
+          const err = new Error(regData.detail || 'Could not create account.')
+          if (regData.code) err.code = regData.code
+          throw err
+        }
+
+        const session = {
+          access_token: 'credentials-session',
+          provider: 'credentials',
+          user: {
+            id: regData.user.id,
+            email: regData.user.email,
+            username: regData.user.username || '',
+            displayName: regData.user.displayName || regData.user.username || 'Workspace User',
+            emailVerified: true,
+          },
+        }
+        persistLocalOAuthSession(session, retainShop)
+        const now = Date.now()
+        setSessionStartedAt(now)
+        identity.current = session.user.id
+        api.setScope({ userId: session.user.id })
+        setState({ session, loading: false, recovery: null, notice: '' })
         return {
-          needsEmailConfirmation: !cred.user?.emailVerified,
+          needsEmailConfirmation: false,
           email: cleanEmail,
-          backend: 'firebase',
+          backend: 'credentials',
+          session,
         }
       })
     },
-    [authBackend, runAuth],
+    [authBackend, retainShop, runAuth],
   )
 
   const requestPasswordReset = useCallback(
@@ -335,10 +433,10 @@ export default function AuthProvider({ children }) {
       api.setScope({ userId: null })
       try {
         window.sessionStorage.removeItem('__kms_playwright_session')
-        window.sessionStorage.removeItem(OAUTH_SESSION_KEY)
       } catch {
         // ignore storage access issues
       }
+      clearLocalOAuthSession()
       if (!isMockMode) {
         try {
           await supabase.auth.signOut({ scope: 'local' })

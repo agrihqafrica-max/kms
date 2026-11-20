@@ -2386,15 +2386,41 @@ export function WorkspaceProvider({ children }) {
         disputeStatus: 'None',
         status: 'Open',
       }
+      const renderedNotif = renderNotificationTemplate('RADAR_ITEM_POSTED', {
+        partDescription: reqDoc.partDescription,
+        motorcycleModel: reqDoc.motorcycleModel,
+        urgencyStatus: reqDoc.urgencyStatus,
+        locationArea: reqDoc.locationArea,
+      })
+      const notifPayload = {
+        ownerId: uid,
+        branchId: activeBranchId,
+        templateKey: 'RADAR_ITEM_POSTED',
+        channel: 'in_app',
+        title: renderedNotif.title,
+        body: renderedNotif.body,
+        status: 'Unread',
+      }
       if (!isFirebaseSession) {
-        const local = { id: `rad-${Date.now()}`, ...reqDoc }
+        const local = { id: `rad-${Date.now()}`, ...reqDoc, createdAt: new Date().toISOString() }
         setRadarRequests(prev => [local, ...prev])
+        setNotifications(prev => [
+          { id: `ntf-rad-${Date.now()}`, ...notifPayload, radarRequestId: local.id, createdAt: new Date().toISOString() },
+          ...prev,
+        ])
         await appendAuditLog('RADAR_REQUEST_CREATED', 'Parts Radar', `Requested ${reqDoc.partDescription}`)
         return local
       }
       try {
         const ref = doc(collection(db, 'users', uid, 'radarRequests'))
         await setDoc(ref, { ...reqDoc, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+        const notifRef = doc(collection(db, 'users', uid, 'notifications'))
+        await setDoc(notifRef, {
+          ...notifPayload,
+          radarRequestId: ref.id,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
         await appendAuditLog('RADAR_REQUEST_CREATED', 'Parts Radar', `Requested ${reqDoc.partDescription}`)
         return { id: ref.id, ...reqDoc }
       } catch (err) {
